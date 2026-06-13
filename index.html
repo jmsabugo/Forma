@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>Forma</title>
+  <meta name="theme-color" content="#202A44">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Forma">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Forma</h1>
+    <span id="sync-badge" class="badge badge-off" title="Estado de sincronización">●</span>
+  </header>
+
+  <main id="view"></main>
+
+  <nav>
+    <button data-tab="hoy" class="active"><span class="ico">🏋️</span>Hoy</button>
+    <button data-tab="historial"><span class="ico">📅</span>Historial</button>
+    <button data-tab="progreso"><span class="ico">📈</span>Progreso</button>
+    <button data-tab="ejercicios"><span class="ico">📋</span>Ejercicios</button>
+    <button data-tab="rutinas"><span class="ico">🔁</span>Rutinas</button>
+    <button data-tab="ajustes"><span class="ico">⚙️</span>Ajustes</button>
+  </nav>
+
+  <script src="app.js"></script>
+</body>
+</html>
