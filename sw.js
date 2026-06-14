@@ -1,7 +1,8 @@
 // Service worker: cachea el armazón de la app para funcionar sin cobertura.
 // Las llamadas a Dropbox nunca se cachean.
-const CACHE = 'forma-v18';
-const SHELL = [
+const CACHE = 'forma-v21';
+// Archivos propios: deben cachearse para que la instalación termine.
+const LOCAL = [
   './',
   'index.html',
   'styles.css',
@@ -10,16 +11,21 @@ const SHELL = [
   'icon-192.png',
   'icon-512.png',
   'apple-touch-icon.png',
+];
+// CDN (SheetJS, Chart.js): se cachean en segundo plano; si fallan no bloquean.
+const CDN = [
   'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
 ];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE).then((c) =>
-      Promise.allSettled(SHELL.map((u) => c.add(u)))
-    ).then(() => self.skipWaiting())
+    caches.open(CACHE)
+      .then((c) => c.addAll(LOCAL))          // local: bloquea (rápido)
+      .then(() => self.skipWaiting())
   );
+  // CDN: best-effort, sin bloquear la instalación
+  caches.open(CACHE).then((c) => CDN.forEach((u) => c.add(u).catch(() => {})));
 });
 
 self.addEventListener('activate', (e) => {

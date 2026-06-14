@@ -14,7 +14,7 @@ const RUTA_DEFECTO = '/JnM Particular/1.1. Proyectos_Personales/App GYM - Forma 
 
 let state = {
   data: null,        // {ejercicios:[], registro:[], config:{}}
-  settings: { appKey: '', refreshToken: '', path: RUTA_DEFECTO },
+  settings: { appKey: '', refreshToken: '', path: RUTA_DEFECTO, lastSync: '' },
   accessToken: null,
   tokenExpira: 0,
   tab: 'hoy',
@@ -368,8 +368,8 @@ async function subirExcel() {
   marcarPendiente(false);
 }
 
-async function sincronizar() {
-  if (!state.settings.refreshToken) { alert('Conecta primero con Dropbox en Ajustes.'); return; }
+async function sincronizar(silencioso) {
+  if (!state.settings.refreshToken) { if (!silencioso) alert('Conecta primero con Dropbox en Ajustes.'); return; }
   suspenderUndo = true;
   const btn = document.getElementById('btn-sync');
   if (btn) { btn.disabled = true; btn.textContent = 'Sincronizando…'; }
@@ -383,9 +383,12 @@ async function sincronizar() {
       saveData();
       localStorage.setItem(LS.rev, rev);
     }
+    state.settings.lastSync = new Date().toISOString();
+    saveSettings();
     render();
   } catch (e) {
-    alert(e.message);
+    if (silencioso) console.warn('Sincronización automática falló:', e.message);
+    else alert(e.message);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Sincronizar ahora'; }
     suspenderUndo = false;
@@ -562,6 +565,14 @@ function fmtFecha(iso) {
   if (!iso) return '—';
   const [a, m, d] = iso.split('-');
   return `${d}/${m}/${a}`;
+}
+
+function fmtFechaHora(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 // ===== Vistas =====
@@ -1880,6 +1891,7 @@ function renderAjustes(v) {
     <h2>Dropbox</h2>
     <div class="card">
       <p>Estado: ${conectado ? '<span class="ok">conectado</span>' : '<span class="aviso">sin conectar</span>'}</p>
+      ${conectado && s.lastSync ? `<p class="nota">Última sincronización: <b>${fmtFechaHora(s.lastSync)}</b></p>` : ''}
       <label for="app-key">App Key (consola de desarrolladores de Dropbox)</label>
       <input type="text" id="app-key" value="${s.appKey}" autocomplete="off" autocapitalize="off">
       <label for="ruta">Ruta del Excel en Dropbox</label>
@@ -1992,4 +2004,4 @@ render();
 
 const code = new URLSearchParams(location.search).get('code');
 if (code) canjearCodigo(code);
-else if (state.settings.refreshToken && navigator.onLine) sincronizar();
+else if (state.settings.refreshToken && navigator.onLine) sincronizar(true);
