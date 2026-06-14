@@ -40,21 +40,24 @@ header h1 { font-size: 1.4rem; letter-spacing: 0.04em; }
 .btn-undo {
   margin-left: auto;
   margin-right: 12px;
+  width: 38px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.45);
   color: var(--blanco);
-  font: inherit;
-  font-size: 0.78rem;
-  font-weight: 700;
+  font-size: 1.5rem;
+  line-height: 1;
   border-radius: 8px;
-  padding: 6px 12px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 .btn-undo[hidden] { display: none; }
 
 .badge { font-size: 0.9rem; }
-.badge-on { color: #7FC68C; }
+.badge-on { color: var(--neblina); }
 .badge-off { color: var(--lavanda); }
 .badge-pending { color: var(--coral); }
 

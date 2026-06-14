@@ -1,6 +1,6 @@
 // Service worker: cachea el armazón de la app para funcionar sin cobertura.
 // Las llamadas a Dropbox nunca se cachean.
-const CACHE = 'forma-v13';
+const CACHE = 'forma-v14';
 const SHELL = [
   './',
   'index.html',
