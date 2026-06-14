@@ -37,6 +37,22 @@ header {
 }
 header h1 { font-size: 1.4rem; letter-spacing: 0.04em; }
 
+.btn-undo {
+  margin-left: auto;
+  margin-right: 12px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  color: var(--blanco);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-undo[hidden] { display: none; }
+
 .badge { font-size: 0.9rem; }
 .badge-on { color: #7FC68C; }
 .badge-off { color: var(--lavanda); }
@@ -193,6 +209,13 @@ select.campo {
   min-height: 64px;
 }
 .control .lectura .num { font-size: 2rem; font-weight: 800; line-height: 1; }
+.control .lectura .num-input {
+  font: inherit; font-size: 2rem; font-weight: 800; line-height: 1;
+  text-align: center; width: 100%; max-width: 140px;
+  border: none; background: transparent; color: var(--azul);
+  padding: 2px 0; -webkit-appearance: none; appearance: none;
+}
+.control .lectura .num-input:focus { outline: none; background: var(--blanco); border-radius: 8px; box-shadow: 0 0 0 2px var(--lavanda); }
 .control .lectura .ud { font-size: 0.72rem; color: var(--lavanda); margin-top: 2px; }
 
 .card.entrada .btn { margin-top: 14px; }
@@ -224,6 +247,20 @@ select.campo {
   font-weight: 600;
   padding: 4px 10px;
 }
+
+/* ===== Hechos hoy (pestaña Hoy) ===== */
+.hechos-hoy { margin-bottom: 14px; }
+.hechos-tit { font-size: 0.72rem; color: var(--coral); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 4px 6px; }
+.card.entrada.hecha { background: rgba(192, 122, 107, 0.12); box-shadow: inset 0 0 0 1.5px var(--coral); }
+.card.entrada.hecha .nombre { color: var(--coral); }
+.btn-mini-add {
+  font: inherit; font-size: 0.78rem; font-weight: 700;
+  color: var(--azul); background: var(--neblina);
+  border: none; border-radius: 999px; padding: 6px 12px;
+  cursor: pointer; -webkit-tap-highlight-color: transparent; white-space: nowrap;
+}
+.hh-resumen { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.hh-lado { font-size: 0.72rem; color: var(--lavanda); font-weight: 700; text-transform: uppercase; }
 
 /* ===== Selector de rutina (pestaña Hoy) ===== */
 .selector-rutina {
@@ -299,7 +336,7 @@ select.campo {
 .mini:disabled { opacity: 0.3; }
 .mini-x { border: none; background: none; }
 .mini-ok { background: var(--azul); color: var(--blanco); border: none; }   /* guardar (✓) */
-.mini-del { background: var(--coral); color: var(--blanco); border: none; } /* borrar (🗑️) */
+.mini-del { background: rgba(192, 122, 107, 0.16); color: var(--coral); border: 1px solid var(--coral); } /* borrar (🗑️) */
 
 /* ===== Entrada por lado (unilaterales, pestaña Hoy) ===== */
 .lado-bloque { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--neblina); }
@@ -342,7 +379,8 @@ select.campo {
   padding: 5px 14px;
   opacity: 0.6;
 }
-.hist-dia.es-hoy { box-shadow: 0 0 0 2px var(--lavanda); }
+.hist-dia.es-hoy { background: rgba(192, 122, 107, 0.16); box-shadow: 0 0 0 2px var(--coral); opacity: 1; }
+.hist-fecha.domingo .dow, .hist-fecha.domingo .dnum { color: var(--coral); }
 .hist-fecha {
   flex: 0 0 38px;
   text-align: center;
@@ -369,7 +407,9 @@ select.campo {
 }
 .ej-hist { padding: 10px 0; border-top: 1px solid var(--neblina); }
 .ej-hist:first-child { border-top: none; }
-.ej-hist-nombre { font-weight: 700; font-size: 0.95rem; margin-bottom: 6px; }
+.ej-hist-cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+.ej-hist-nombre { font-weight: 700; font-size: 0.95rem; }
+.ej-hist-cab .mini { width: 34px; height: 34px; font-size: 0.9rem; }
 .series-hist { display: flex; flex-wrap: wrap; gap: 6px; }
 .serie-pill.editable, .lado-pill.editable { cursor: pointer; }
 .serie-pill.editable:active, .lado-pill.editable:active { background: var(--lavanda); color: var(--blanco); }

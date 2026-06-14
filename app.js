@@ -21,6 +21,8 @@ let state = {
   entrada: {},      // valores en curso de la entrada rápida: { [id]: {peso, reps} }
   rutinaHoy: null,  // rutina elegida para hoy (nombre, o '__libre__', o null)
   extras: [],       // ejercicios sueltos añadidos hoy fuera de la rutina
+  hoyExpandido: null, // id del ejercicio "hecho hoy" con los controles desplegados
+  undoStack: [],    // instantáneas de datos para "deshacer" (solo en memoria)
   editEj: null,     // id del ejercicio en edición en el catálogo ('__nuevo__' al crear)
   histAbierto: null,    // fecha (ISO) del día desplegado en el Historial
   histEdit: null,       // índice en registro de la serie en edición
@@ -32,10 +34,14 @@ let state = {
 const EQUIPOS = ['Barra', 'Mancuernas', 'Polea', 'Lastre'];
 const LATERALIDADES = ['Bilateral', 'Unilateral'];
 
+// Stack de placas de polea por defecto (kg, conversión de 10..210 lb).
+const DEFAULT_POLEA = [4.5, 9.1, 13.6, 18.1, 22.7, 27.2, 31.8, 36.3, 40.8, 45.4,
+  50, 54.4, 59, 63.5, 68, 72.6, 77.1, 81.6, 86.2, 90.7, 95.3];
+
 function loadLocal() {
   try {
     const d = localStorage.getItem(LS.data);
-    if (d) state.data = JSON.parse(d);
+    if (d) { state.data = JSON.parse(d); lastGood = JSON.stringify(state.data); }
     const s = localStorage.getItem(LS.settings);
     if (s) state.settings = Object.assign(state.settings, JSON.parse(s));
     // Selección de rutina: solo vale si es de hoy.
@@ -53,8 +59,36 @@ function guardarRutinaHoy() {
   }));
 }
 
+// Instantánea del último estado persistido y bandera para no apilar (config/sync).
+let lastGood = null;
+let suspenderUndo = false;
+
+function deshacerOn() { return cfgBool('permitir_deshacer', true); }
+
 function saveData() {
-  localStorage.setItem(LS.data, JSON.stringify(state.data));
+  const cur = JSON.stringify(state.data);
+  if (deshacerOn() && !suspenderUndo && lastGood != null && lastGood !== cur) {
+    state.undoStack.push(lastGood);
+    if (state.undoStack.length > 20) state.undoStack.shift();
+  }
+  localStorage.setItem(LS.data, cur);
+  lastGood = cur;
+}
+
+function deshacer() {
+  if (!state.undoStack.length) return;
+  const prev = state.undoStack.pop();
+  state.data = JSON.parse(prev);
+  lastGood = prev;                       // no volver a apilar este mismo estado
+  localStorage.setItem(LS.data, prev);   // persistir sin pasar por la pila
+  marcarPendiente(true);
+  render();
+}
+
+function pintarUndo() {
+  const b = document.getElementById('btn-undo');
+  if (!b) return;
+  b.hidden = !(deshacerOn() && state.undoStack.length);
 }
 
 function saveSettings() {
@@ -310,6 +344,7 @@ async function subirExcel() {
 
 async function sincronizar() {
   if (!state.settings.refreshToken) { alert('Conecta primero con Dropbox en Ajustes.'); return; }
+  suspenderUndo = true;
   const btn = document.getElementById('btn-sync');
   if (btn) { btn.disabled = true; btn.textContent = 'Sincronizando…'; }
   try {
@@ -327,6 +362,9 @@ async function sincronizar() {
     alert(e.message);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Sincronizar ahora'; }
+    suspenderUndo = false;
+    state.undoStack = [];                                   // el histórico de sesión ya no aplica
+    lastGood = state.data ? JSON.stringify(state.data) : null;
     pintarBadge();
   }
 }
@@ -338,12 +376,15 @@ function importarArchivo(ev) {
   const lector = new FileReader();
   lector.onload = () => {
     try {
+      suspenderUndo = true;
       state.data = parseWorkbook(lector.result);
       saveData();
+      suspenderUndo = false;
+      state.undoStack = [];
       marcarPendiente(false);
       render();
       alert('Excel importado correctamente.');
-    } catch (e) { alert(e.message); }
+    } catch (e) { suspenderUndo = false; alert(e.message); }
   };
   lector.readAsArrayBuffer(f);
 }
@@ -421,6 +462,48 @@ function cfgNum(clave, defecto) {
 function incrementoPeso() { return cfgNum('incremento_peso', 1.25); }
 function incrementoReps() { return cfgNum('incremento_reps', 1); }
 
+// Lee una clave booleana de Config (cualquier valor distinto de "NO" = true).
+function cfgBool(clave, defecto) {
+  const c = state.data && state.data.config && state.data.config[clave];
+  if (!c) return defecto;
+  return String(c.valor).trim().toUpperCase() !== 'NO';
+}
+
+// Escribe/actualiza una clave de Config (se guarda en el Excel al sincronizar).
+function setConfig(clave, valor, descripcion) {
+  if (!state.data.config) state.data.config = {};
+  const prev = state.data.config[clave];
+  state.data.config[clave] = { valor, descripcion: (prev && prev.descripcion) || descripcion || '' };
+  suspenderUndo = true; saveData(); suspenderUndo = false;  // los ajustes no entran en "deshacer"
+  marcarPendiente(true);
+}
+
+// Confirmación de borrados, configurable en Ajustes (por defecto activada).
+function confirmarBorradosOn() { return cfgBool('confirmar_borrados', true); }
+function confirmar(msg) { return !confirmarBorradosOn() || confirm(msg); }
+
+// Texto configurado del stack de polea (kg, decimales con punto, separados por comas).
+function pesosPoleaTexto() {
+  const c = state.data && state.data.config && state.data.config['pesos_polea'];
+  if (c && String(c.valor).trim()) return String(c.valor).trim();
+  return DEFAULT_POLEA.join(', ');
+}
+// Lista numérica y ordenada del stack de polea.
+function stackPolea() {
+  return pesosPoleaTexto().split(/[,;]/)
+    .map(s => Number(s.trim()))
+    .filter(n => Number.isFinite(n) && n > 0)
+    .sort((a, b) => a - b);
+}
+// Siguiente (dir>0) o anterior (dir<0) placa del stack respecto a un peso actual.
+function pasoPolea(actual, dir) {
+  const st = stackPolea();
+  if (!st.length) return Math.max(0, red2(actual + dir * incrementoPeso()));
+  if (dir > 0) { const n = st.find(w => w > actual + 0.001); return n != null ? n : st[st.length - 1]; }
+  const p = [...st].reverse().find(w => w < actual - 0.001); return p != null ? p : st[0];
+}
+function esPolea(e) { return !!e && String(e.equipamiento).toLowerCase() === 'polea'; }
+
 function hoyISO() { return new Date().toISOString().slice(0, 10); }
 
 // Series ya registradas hoy para un ejercicio, ordenadas por nº de serie.
@@ -479,6 +562,7 @@ function render() {
   else if (state.tab === 'rutinas') renderRutinas(v);
   else renderAjustes(v);
   pintarBadge();
+  pintarUndo();
 }
 
 // Valores precargados para un ejercicio (y lado): si ya hay series hoy, se parte
@@ -523,6 +607,14 @@ function anadirSuelto(id) {
   render();
 }
 
+// IDs de ejercicios con al menos una serie registrada hoy, en orden de realización.
+function idsHechosHoy() {
+  const h = hoyISO();
+  const ids = [];
+  state.data.registro.forEach(r => { if (r.fecha === h && !ids.includes(r.id)) ids.push(r.id); });
+  return ids;
+}
+
 function renderHoy(v) {
   const stepP = incrementoPeso();
   const stepR = incrementoReps();
@@ -534,28 +626,43 @@ function renderHoy(v) {
     state.rutinaHoy = null;
   }
 
+  let html = `<h2>Hoy · ${fmtFecha(hoyISO())}</h2>`;
+
+  // Sección "Hechos hoy" (compacta), encima del selector: no desaparecen al cambiar de rutina.
+  const hechosIds = idsHechosHoy();
+  const hechos = hechosIds.map(id => state.data.ejercicios.find(e => e.id === id)).filter(Boolean);
+  if (hechos.length) {
+    html += `<div class="hechos-hoy"><div class="hechos-tit">Hechos hoy</div>`
+      + hechos.map(e => tarjetaHecha(e, stepP, stepR)).join('') + `</div>`;
+  }
+
   // Selector de rutina
   const chips = rutinas.map(r =>
     `<button class="chip-sel ${state.rutinaHoy === r.nombre ? 'sel' : ''}" data-rutina="${esc(r.nombre)}">${esc(r.nombre)}</button>`
   ).join('') +
     `<button class="chip-sel ${state.rutinaHoy === '__libre__' ? 'sel' : ''}" data-rutina="__libre__">Libre</button>`;
-
-  let html = `<h2>Hoy · ${fmtFecha(hoyISO())}</h2><div class="selector-rutina">${chips}</div>`;
+  html += `<div class="selector-rutina">${chips}</div>`;
 
   if (!state.rutinaHoy) {
-    html += '<p class="nota">Elige tu entrenamiento de hoy para empezar a registrar.</p>';
+    html += hechos.length
+      ? '<p class="nota">Elige una rutina para seguir, o añade más series arriba.</p>'
+      : '<p class="nota">Elige tu entrenamiento de hoy para empezar a registrar.</p>';
     v.innerHTML = html;
-    bindSelectorRutina(v);
+    bindHoy(v);
     return;
   }
 
-  const lista = ejerciciosDeHoy();
-  html += lista.length
-    ? lista.map(e => tarjetaEntrada(e, stepP, stepR)).join('')
-    : '<p class="nota">Esta rutina no tiene ejercicios activos. Edítala en la pestaña Rutinas.</p>';
+  // Pendientes: ejercicios de la rutina/extras que aún NO se han hecho hoy.
+  const hechosSet = new Set(hechosIds);
+  const pendientes = ejerciciosDeHoy().filter(e => !hechosSet.has(e.id));
+  html += pendientes.length
+    ? pendientes.map(e => tarjetaEntrada(e, stepP, stepR)).join('')
+    : (hechos.length ? '<p class="nota">¡Rutina completada! Puedes añadir otro ejercicio abajo.</p>'
+                     : '<p class="nota">Esta rutina no tiene ejercicios activos. Edítala en la pestaña Rutinas.</p>');
 
-  // Añadir un ejercicio suelto que no estaba en la rutina
-  const restantes = state.data.ejercicios.filter(e => e.activo && !lista.includes(e));
+  // Añadir un ejercicio suelto que no esté ni hecho ni pendiente.
+  const presentes = new Set([...hechosSet, ...pendientes.map(e => e.id)]);
+  const restantes = state.data.ejercicios.filter(e => e.activo && !presentes.has(e.id));
   if (restantes.length) {
     html += `<select id="add-suelto" class="add-suelto">
       <option value="">+ Añadir otro ejercicio…</option>
@@ -564,23 +671,54 @@ function renderHoy(v) {
   }
 
   v.innerHTML = html;
-  bindSelectorRutina(v);
-
-  // Handlers de +/- y guardar (con lado en unilaterales)
-  v.querySelectorAll('[data-paso]').forEach(btn => {
-    btn.onclick = () => ajustar(btn.dataset.id, btn.dataset.campo, Number(btn.dataset.paso), btn.dataset.lado || '');
-  });
-  v.querySelectorAll('[data-guardar]').forEach(btn => {
-    btn.onclick = () => guardarSerie(btn.dataset.guardar, btn.dataset.guardarLado || '');
-  });
-  const add = document.getElementById('add-suelto');
-  if (add) add.onchange = () => anadirSuelto(add.value);
+  bindHoy(v);
 }
 
-function bindSelectorRutina(v) {
-  v.querySelectorAll('[data-rutina]').forEach(btn => {
-    btn.onclick = () => elegirRutina(btn.dataset.rutina);
+// Tarjeta compacta de un ejercicio ya trabajado hoy: resumen de series + "Añadir
+// serie" que despliega los controles de entrada (reutiliza bloqueEntrada).
+function tarjetaHecha(e, stepP, stepR) {
+  const unilateral = String(e.lateralidad).toLowerCase() === 'unilateral';
+  const expandido = state.hoyExpandido === e.id;
+
+  let cuerpo;
+  if (expandido) {
+    cuerpo = unilateral
+      ? `<div class="lado-bloque">${bloqueEntrada(e, 'Izq', stepP, stepR)}</div>
+         <div class="lado-bloque">${bloqueEntrada(e, 'Der', stepP, stepR)}</div>`
+      : bloqueEntrada(e, '', stepP, stepR);
+  } else {
+    const pills = (lado) => seriesDeHoy(e.id, lado)
+      .map(s => `<span class="serie-pill">S${s.serie}: ${fmtPeso(s.peso)}kg × ${s.reps}</span>`).join('');
+    cuerpo = unilateral
+      ? `<div class="hh-resumen"><span class="hh-lado">izq</span> ${pills('Izq') || '—'}</div>
+         <div class="hh-resumen"><span class="hh-lado">der</span> ${pills('Der') || '—'}</div>`
+      : `<div class="hh-resumen">${pills('') || '—'}</div>`;
+  }
+
+  return `<div class="card entrada hecha">
+    <div class="titulo">
+      <span class="nombre">✓ ${esc(e.nombre)}</span>
+      <button class="btn-mini-add" data-expandir="${e.id}">${expandido ? 'Cerrar' : '+ Añadir serie'}</button>
+    </div>
+    ${cuerpo}
+  </div>`;
+}
+
+function bindHoy(v) {
+  v.querySelectorAll('[data-rutina]').forEach(btn =>
+    btn.onclick = () => elegirRutina(btn.dataset.rutina));
+  v.querySelectorAll('[data-paso]').forEach(btn =>
+    btn.onclick = () => ajustar(btn.dataset.id, btn.dataset.campo, Number(btn.dataset.paso), btn.dataset.lado || ''));
+  v.querySelectorAll('[data-edit]').forEach(inp => {
+    inp.onchange = () => editarEntrada(inp.dataset.id, inp.dataset.edit, inp.value, inp.dataset.lado || '');
+    inp.onfocus = () => inp.select();
   });
+  v.querySelectorAll('[data-guardar]').forEach(btn =>
+    btn.onclick = () => guardarSerie(btn.dataset.guardar, btn.dataset.guardarLado || ''));
+  v.querySelectorAll('[data-expandir]').forEach(btn =>
+    btn.onclick = () => { state.hoyExpandido = (state.hoyExpandido === btn.dataset.expandir) ? null : btn.dataset.expandir; render(); });
+  const add = document.getElementById('add-suelto');
+  if (add) add.onchange = () => anadirSuelto(add.value);
 }
 
 function tarjetaEntrada(e, stepP, stepR) {
@@ -636,12 +774,12 @@ function bloqueEntrada(e, lado, stepP, stepR) {
     ${refUltimaHtml(e.id, lado)}
     <div class="control">
       <button class="paso" data-id="${e.id}" data-lado="${lado}" data-campo="peso" data-paso="${-stepP}">−</button>
-      <div class="lectura"><span class="num">${fmtPeso(base.peso)}</span><span class="ud">kg</span></div>
+      <div class="lectura"><input class="num num-input" type="text" inputmode="decimal" data-edit="peso" data-id="${e.id}" data-lado="${lado}" value="${fmtPeso(base.peso)}"><span class="ud">kg</span></div>
       <button class="paso" data-id="${e.id}" data-lado="${lado}" data-campo="peso" data-paso="${stepP}">+</button>
     </div>
     <div class="control">
       <button class="paso" data-id="${e.id}" data-lado="${lado}" data-campo="reps" data-paso="${-stepR}">−</button>
-      <div class="lectura"><span class="num">${base.reps}</span><span class="ud">reps${lado ? '/lado' : ''}</span></div>
+      <div class="lectura"><input class="num num-input" type="text" inputmode="numeric" data-edit="reps" data-id="${e.id}" data-lado="${lado}" value="${base.reps}"><span class="ud">reps${lado ? '/lado' : ''}</span></div>
       <button class="paso" data-id="${e.id}" data-lado="${lado}" data-campo="reps" data-paso="${stepR}">+</button>
     </div>
     <button class="btn" data-guardar="${e.id}" data-guardar-lado="${lado}">${guardarTxt}</button>
@@ -651,8 +789,22 @@ function bloqueEntrada(e, lado, stepP, stepR) {
 function ajustar(id, campo, paso, lado) {
   const key = entradaKey(id, lado);
   const v = state.entrada[key] || (state.entrada[key] = { peso: 0, reps: 0 });
-  if (campo === 'peso') v.peso = Math.max(0, red2(v.peso + paso));
-  else v.reps = Math.max(0, v.reps + paso);
+  if (campo === 'peso') {
+    // En polea, el +/- salta por las placas del stack; en el resto, incremento fijo.
+    v.peso = esPolea(ejPorId(id)) ? pasoPolea(v.peso, paso > 0 ? 1 : -1)
+                                  : Math.max(0, red2(v.peso + paso));
+  } else {
+    v.reps = Math.max(0, v.reps + paso);
+  }
+  render();
+}
+
+// Edición manual del peso/reps tocando el campo (cualquier valor, sin snap).
+function editarEntrada(id, campo, valor, lado) {
+  const key = entradaKey(id, lado);
+  const v = state.entrada[key] || (state.entrada[key] = { peso: 0, reps: 0 });
+  if (campo === 'peso') v.peso = Math.max(0, red2(Number(String(valor).replace(',', '.')) || 0));
+  else v.reps = Math.max(0, Math.round(Number(valor) || 0));
   render();
 }
 
@@ -666,6 +818,7 @@ function guardarSerie(id, lado) {
     lado: lado || '', reps: val.reps, peso: red2(val.peso),
     rutina: rutinaParaGuardar(), notas: '',
   });
+  state.hoyExpandido = id; // queda en "Hechos hoy" con los controles abiertos
   saveData();
   marcarPendiente(true);
   render();
@@ -832,7 +985,7 @@ function borrarEjercicio(id) {
   let msg = `¿Borrar "${e.nombre}" del catálogo?`;
   if (nSeries) msg += `\n\nTiene ${nSeries} serie(s) en el historial: se conservan en el Registro, pero el ejercicio dejará de aparecer. Si solo quieres dejar de verlo al entrenar, márcalo como inactivo en su lugar.`;
   if (enRutinas.length) msg += `\n\nSe quitará de las rutinas: ${enRutinas.join(', ')}.`;
-  if (!confirm(msg)) return;
+  if (!confirmar(msg)) return;
 
   state.data.ejercicios = state.data.ejercicios.filter(x => x.id !== id);
   (state.data.rutinas || []).forEach(r => { r.ids = r.ids.filter(x => x !== id); });
@@ -916,7 +1069,8 @@ function renderHistorial(v) {
       continue;
     }
     html += `<div class="hist-sem">${rotulo}</div>`;
-    dias.forEach(dt => { html += filaDiaHist(dt, porFecha); });
+    // Días de más reciente a más antiguo (hoy arriba del todo).
+    for (let k = dias.length - 1; k >= 0; k--) html += filaDiaHist(dias[k], porFecha);
   }
 
   v.innerHTML = html;
@@ -926,13 +1080,15 @@ function renderHistorial(v) {
 function filaDiaHist(dt, porFecha) {
   const iso = dateAIso(dt);
   const esHoy = iso === hoyISO();
+  const esDomingo = idxSemana(dt) === 6;
+  const fechaCls = esDomingo ? 'hist-fecha domingo' : 'hist-fecha';
   const dow = DIAS_SEM[idxSemana(dt)];
   const idxs = porFecha.get(iso);
 
   if (!idxs) {
     if (state.histAbierto === iso) return diaVacioAbierto(dt);
-    return `<div class="hist-dia vacio" data-abrir="${iso}">
-      <div class="hist-fecha"><span class="dow">${dow}</span><span class="dnum">${dt.getDate()}</span></div>
+    return `<div class="hist-dia vacio${esHoy ? ' es-hoy' : ''}" data-abrir="${iso}">
+      <div class="${fechaCls}"><span class="dow">${dow}</span><span class="dnum">${dt.getDate()}</span></div>
       <div class="hist-resumen">${esHoy ? 'hoy · ' : ''}descanso</div>
     </div>`;
   }
@@ -945,7 +1101,7 @@ function filaDiaHist(dt, porFecha) {
   const abierto = state.histAbierto === iso;
 
   let html = `<div class="hist-dia${esHoy ? ' es-hoy' : ''}${abierto ? ' abierto' : ''}" data-toggle="${iso}">
-    <div class="hist-fecha"><span class="dow">${dow}</span><span class="dnum">${dt.getDate()}</span></div>
+    <div class="${fechaCls}"><span class="dow">${dow}</span><span class="dnum">${dt.getDate()}</span></div>
     <div class="hist-info">
       <div class="hist-rutina">${esc(rutina)}${esHoy ? ' <span class="hoy-badge">hoy</span>' : ''}</div>
       <div class="hist-resumen">${nEj} ejercicios · ${nSeries} series · ${nReps} reps</div>
@@ -1008,7 +1164,10 @@ function bloqueEjercicioHist(iso, id, idxs) {
   }
 
   return `<div class="ej-hist">
-    <div class="ej-hist-nombre">${esc(nombre)}</div>
+    <div class="ej-hist-cab">
+      <span class="ej-hist-nombre">${esc(nombre)}</span>
+      <button class="mini mini-del" data-del-ej-dia="${iso}|${id}" title="Borrar ejercicio del día">🗑️</button>
+    </div>
     ${series}
     <button class="add-serie" data-add-serie="${iso}|${id}">+ serie</button>
   </div>`;
@@ -1044,6 +1203,8 @@ function ladoPillHist(lado, i) {
 
 function diaVacioAbierto(dt) {
   const iso = dateAIso(dt);
+  const esHoy = iso === hoyISO();
+  const fechaCls = idxSemana(dt) === 6 ? 'hist-fecha domingo' : 'hist-fecha';
   const dow = DIAS_SEM[idxSemana(dt)];
   const rutinas = state.data.rutinas || [];
   const elegida = state.histRutinaNueva[iso];
@@ -1061,8 +1222,8 @@ function diaVacioAbierto(dt) {
         ${state.data.ejercicios.filter(e => e.activo).map(e => `<option value="${e.id}">${esc(e.nombre)}</option>`).join('')}
       </select>`;
   }
-  return `<div class="hist-dia vacio abierto" data-toggle="${iso}">
-      <div class="hist-fecha"><span class="dow">${dow}</span><span class="dnum">${dt.getDate()}</span></div>
+  return `<div class="hist-dia vacio abierto${esHoy ? ' es-hoy' : ''}" data-toggle="${iso}">
+      <div class="${fechaCls}"><span class="dow">${dow}</span><span class="dnum">${dt.getDate()}</span></div>
       <div class="hist-resumen">nuevo entreno</div>
       <span class="hist-chev">▴</span>
     </div><div class="dia-detalle">${panel}</div>`;
@@ -1090,6 +1251,11 @@ function bindHistorial(v) {
     ev.stopPropagation();
     const [iso, id, serie] = el.dataset.delSerie.split('|');
     borrarSerieHist(iso, id, Number(serie));
+  });
+  v.querySelectorAll('[data-del-ej-dia]').forEach(el => el.onclick = (ev) => {
+    ev.stopPropagation();
+    const [iso, id] = el.dataset.delEjDia.split('|');
+    borrarEjercicioDia(iso, id);
   });
   v.querySelectorAll('[data-add-serie]').forEach(el => el.onclick = (ev) => {
     ev.stopPropagation();
@@ -1120,8 +1286,18 @@ function guardarEdicionSerie(i) {
 }
 
 function borrarSerieHist(iso, id, serie) {
+  if (!confirmar(`¿Borrar la serie ${serie}?`)) return;
   state.data.registro = state.data.registro.filter(r => !(r.fecha === iso && r.id === id && r.serie === serie));
   renumerarSeries(iso, id);
+  state.histEdit = null;
+  persistirRegistro();
+}
+
+function borrarEjercicioDia(iso, id) {
+  const e = state.data.ejercicios.find(x => x.id === id);
+  const nombre = e ? e.nombre : id;
+  if (!confirmar(`¿Borrar todas las series de "${nombre}" del ${fmtFecha(iso)}?`)) return;
+  state.data.registro = state.data.registro.filter(r => !(r.fecha === iso && r.id === id));
   state.histEdit = null;
   persistirRegistro();
 }
@@ -1145,7 +1321,7 @@ function anadirSerieDia(iso, id) {
 }
 
 function borrarDiaHist(iso) {
-  if (!confirm(`¿Borrar todo el entreno del ${fmtFecha(iso)}? Se eliminarán todas sus series.`)) return;
+  if (!confirmar(`¿Borrar todo el entreno del ${fmtFecha(iso)}? Se eliminarán todas sus series.`)) return;
   state.data.registro = state.data.registro.filter(r => r.fecha !== iso);
   delete state.histRutinaNueva[iso];
   state.histAbierto = null;
@@ -1529,7 +1705,7 @@ function tarjetaRutinaEditor(r, ri) {
     <div class="card rutina-edit">
       <div class="rut-cab">
         <input type="text" class="rut-titulo" data-ren="${ri}" value="${esc(r.nombre)}" autocapitalize="words">
-        <button class="mini mini-x" data-del-rut="${ri}" title="Borrar rutina">🗑️</button>
+        <button class="mini mini-del" data-del-rut="${ri}" title="Borrar rutina">🗑️</button>
       </div>
       <ul class="rut-lista">${filas || '<li class="nota">Sin ejercicios todavía.</li>'}</ul>
       ${addSel}
@@ -1562,7 +1738,7 @@ function renombrarRutina(ri, nombre) {
 function borrarRutina(ri) {
   const r = state.data.rutinas[ri];
   if (!r) return;
-  if (!confirm(`¿Borrar la rutina "${r.nombre}"? Los entrenamientos registrados no se tocan.`)) return;
+  if (!confirmar(`¿Borrar la rutina "${r.nombre}"? Los entrenamientos registrados no se tocan.`)) return;
   state.data.rutinas.splice(ri, 1);
   persistirRutinas();
 }
@@ -1612,6 +1788,15 @@ function renderAjustes(v) {
       ninguna contraseña.</p>
     </div>
 
+    <h2>Preferencias</h2>
+    <div class="card">
+      <label class="ej-activo"><input type="checkbox" id="pref-confirmar" ${confirmarBorradosOn() ? 'checked' : ''}> Pedir confirmación al borrar</label>
+      <label class="ej-activo"><input type="checkbox" id="pref-deshacer" ${deshacerOn() ? 'checked' : ''}> Permitir deshacer el último cambio</label>
+      <label for="pref-polea">Pesos de polea (kg)</label>
+      <input type="text" id="pref-polea" value="${esc(pesosPoleaTexto())}" inputmode="decimal" autocomplete="off" autocapitalize="off">
+      <p class="nota">Las placas de tu máquina de poleas. En ejercicios de Polea, los botones +/− saltan por estos valores. Decimales con punto, separados por comas. (Siempre puedes editar el peso a mano tocándolo.)</p>
+    </div>
+
     <h2>Datos en local</h2>
     <div class="card">
       <button class="btn btn-sec" id="btn-importar">Importar Excel…</button>
@@ -1631,6 +1816,12 @@ function renderAjustes(v) {
   });
   on('btn-importar', () => document.getElementById('file-import').click());
   on('btn-exportar', exportarArchivo);
+  const pc = document.getElementById('pref-confirmar');
+  if (pc) pc.onchange = () => setConfig('confirmar_borrados', pc.checked ? 'SI' : 'NO', 'Pedir confirmación antes de borrar (SI/NO).');
+  const pd = document.getElementById('pref-deshacer');
+  if (pd) pd.onchange = () => { setConfig('permitir_deshacer', pd.checked ? 'SI' : 'NO', 'Permitir deshacer el último cambio (SI/NO).'); if (!pd.checked) state.undoStack = []; pintarUndo(); };
+  const pp = document.getElementById('pref-polea');
+  if (pp) pp.onchange = () => setConfig('pesos_polea', pp.value.trim(), 'Placas del stack de polea (kg), decimales con punto, separadas por comas.');
   document.getElementById('file-import').onchange = importarArchivo;
   document.getElementById('ruta').onchange = guardarAjustesForm;
   document.getElementById('app-key').onchange = guardarAjustesForm;
@@ -1655,6 +1846,9 @@ function pintarBadge() {
 // ===== Arranque =====
 document.querySelectorAll('nav button').forEach(b =>
   b.onclick = () => { state.tab = b.dataset.tab; render(); });
+
+const btnUndo = document.getElementById('btn-undo');
+if (btnUndo) btnUndo.onclick = deshacer;
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 
