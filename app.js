@@ -23,6 +23,7 @@ let state = {
   extras: [],       // ejercicios sueltos añadidos hoy fuera de la rutina
   hoyExpandido: null, // id del ejercicio "hecho hoy" con los controles desplegados
   undoStack: [],    // instantáneas de datos para "deshacer" (solo en memoria)
+  ejBuscar: '',     // texto del buscador del catálogo (pestaña Ejercicios)
   editEj: null,     // id del ejercicio en edición en el catálogo ('__nuevo__' al crear)
   histAbierto: null,    // fecha (ISO) del día desplegado en el Historial
   histEdit: null,       // índice en registro de la serie en edición
@@ -89,6 +90,31 @@ function pintarUndo() {
   const b = document.getElementById('btn-undo');
   if (!b) return;
   b.hidden = !(deshacerOn() && state.undoStack.length);
+}
+
+// Conecta los buscadores: el del catálogo (oculta tarjetas) y los de los
+// selectores de ejercicio (ocultan opciones del desplegable).
+function wireBuscadores() {
+  const cat = document.getElementById('ej-buscar');
+  if (cat) {
+    const aplicar = () => {
+      state.ejBuscar = cat.value;
+      const q = cat.value.trim().toLowerCase();
+      document.querySelectorAll('[data-buscar]').forEach(el => {
+        el.style.display = (!q || el.dataset.buscar.includes(q)) ? '' : 'none';
+      });
+    };
+    cat.oninput = aplicar;
+    aplicar(); // reaplica el filtro tras un re-render
+  }
+  document.querySelectorAll('.buscar-sel').forEach(inp => {
+    const sel = document.getElementById(inp.dataset.target);
+    if (!sel) return;
+    inp.oninput = () => {
+      const q = inp.value.trim().toLowerCase();
+      [...sel.options].forEach(o => { if (o.value) o.hidden = !!q && !o.textContent.toLowerCase().includes(q); });
+    };
+  });
 }
 
 function saveSettings() {
@@ -413,13 +439,15 @@ function ultimaSerie(idEjercicio, lado) {
   return ultimoPeso(idEjercicio, lado); // misma lógica: fecha máx, serie máx
 }
 
-// Series del último entrenamiento de un ejercicio (su fecha más reciente), como
-// referencia en la entrada de Hoy. Con `lado` solo mira ese lado.
+// Series del entrenamiento ANTERIOR de un ejercicio (excluye hoy), como
+// referencia a superar en la entrada de Hoy. Con `lado` solo mira ese lado.
 function ultimaSesionRef(id, lado) {
+  const hoy = hoyISO();
   let fmax = '';
   for (const r of state.data.registro) {
     if (r.id !== id) continue;
     if (lado && r.lado !== lado) continue;
+    if (r.fecha === hoy) continue;            // la referencia es el día anterior, no hoy
     if (r.fecha > fmax) fmax = r.fecha;
   }
   if (!fmax) return null;
@@ -429,18 +457,13 @@ function ultimaSesionRef(id, lado) {
   return { fecha: fmax, series };
 }
 
-// Píldoras con las reps de cada serie del último entrenamiento (a superar). El
-// peso y la fecha ya salen en grande arriba; solo se muestra el peso de una serie
-// si difiere del de referencia (el de la última serie, el que se ve arriba).
+// Píldoras de la última vez: peso × reps de cada serie (referencia a superar).
 function refUltimaHtml(id, lado) {
   const ref = ultimaSesionRef(id, lado);
   if (!ref || !ref.series.length) return '';
-  const pesoRef = red2(ref.series[ref.series.length - 1].peso);
-  const pills = ref.series.map(s => {
-    const dif = red2(s.peso) !== pesoRef ? ` (${fmtPeso(s.peso)}kg)` : '';
-    return `<span class="rep-pill">S${s.serie}:${s.reps}${dif}</span>`;
-  }).join('');
-  return `<div class="ref-ultima"><span class="ref-lbl">Última vez:</span>${pills}</div>`;
+  const pills = ref.series.map(s =>
+    `<span class="rep-pill">S${s.serie}: ${fmtPeso(s.peso)}×${s.reps}</span>`).join('');
+  return `<div class="ref-ultima"><span class="ref-lbl">Última vez (${fmtFecha(ref.fecha)}):</span>${pills}</div>`;
 }
 
 // Clave del estado de entrada en curso (por lado en unilaterales).
@@ -563,6 +586,7 @@ function render() {
   else renderAjustes(v);
   pintarBadge();
   pintarUndo();
+  wireBuscadores();
 }
 
 // Valores precargados para un ejercicio (y lado): si ya hay series hoy, se parte
@@ -664,7 +688,8 @@ function renderHoy(v) {
   const presentes = new Set([...hechosSet, ...pendientes.map(e => e.id)]);
   const restantes = state.data.ejercicios.filter(e => e.activo && !presentes.has(e.id));
   if (restantes.length) {
-    html += `<select id="add-suelto" class="add-suelto">
+    html += `<input class="buscador buscar-sel" type="search" placeholder="Buscar ejercicio…" data-target="add-suelto" autocapitalize="off">
+    <select id="add-suelto" class="add-suelto">
       <option value="">+ Añadir otro ejercicio…</option>
       ${restantes.map(e => `<option value="${e.id}">${esc(e.nombre)}</option>`).join('')}
     </select>`;
@@ -695,11 +720,12 @@ function tarjetaHecha(e, stepP, stepR) {
       : `<div class="hh-resumen">${pills('') || '—'}</div>`;
   }
 
-  return `<div class="card entrada hecha">
+  return `<div class="card entrada hecha"${expandido ? ' data-activa="1"' : ''}>
     <div class="titulo">
       <span class="nombre">✓ ${esc(e.nombre)}</span>
       <button class="btn-mini-add" data-expandir="${e.id}">${expandido ? 'Cerrar' : '+ Añadir serie'}</button>
     </div>
+    ${expandido ? metaDescanso(e) : ''}
     ${cuerpo}
   </div>`;
 }
@@ -721,6 +747,11 @@ function bindHoy(v) {
   if (add) add.onchange = () => anadirSuelto(add.value);
 }
 
+// Línea con el descanso entre series del ejercicio (del catálogo).
+function metaDescanso(e) {
+  return e.descanso ? `<div class="entrada-meta">⏱ Descanso ${fmtPeso(e.descanso)} min</div>` : '';
+}
+
 function tarjetaEntrada(e, stepP, stepR) {
   const unilateral = String(e.lateralidad).toLowerCase() === 'unilateral';
   if (unilateral) {
@@ -730,6 +761,7 @@ function tarjetaEntrada(e, stepP, stepR) {
           <span class="nombre">${esc(e.nombre)}</span>
           <span class="chip chip-coral">Unilateral · por lado</span>
         </div>
+        ${metaDescanso(e)}
         <div class="lado-bloque">${bloqueEntrada(e, 'Izq', stepP, stepR)}</div>
         <div class="lado-bloque">${bloqueEntrada(e, 'Der', stepP, stepR)}</div>
       </div>`;
@@ -743,6 +775,7 @@ function tarjetaEntrada(e, stepP, stepR) {
           <small>${u ? 'último (' + fmtFecha(u.fecha) + ')' : 'sin registros'}</small>
         </span>
       </div>
+      ${metaDescanso(e)}
       ${bloqueEntrada(e, '', stepP, stepR)}
     </div>`;
 }
@@ -822,16 +855,26 @@ function guardarSerie(id, lado) {
   saveData();
   marcarPendiente(true);
   render();
+  // Sitúa la pantalla en la tarjeta activa (que acaba de subir a "Hechos hoy").
+  const activa = document.querySelector('[data-activa]');
+  if (activa) {
+    const y = activa.getBoundingClientRect().top + window.scrollY - 64;
+    window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+  }
 }
 
 function renderEjercicios(v) {
-  // Catálogo completo (activos primero, luego inactivos); cada uno editable.
-  const ejs = state.data.ejercicios.slice().sort((a, b) =>
-    (a.activo === b.activo) ? 0 : (a.activo ? -1 : 1));
+  // Orden manual (el del array, que se guarda en el Excel).
+  const ejs = state.data.ejercicios;
 
   let html = '<h2>Catálogo</h2>';
-  html += ejs.map(e =>
-    state.editEj === e.id ? formEjercicio(e) : tarjetaEjercicio(e)).join('');
+  html += `<input id="ej-buscar" class="buscador" type="search" placeholder="Buscar ejercicio…" value="${esc(state.ejBuscar || '')}" autocapitalize="off">`;
+  html += `<div class="orden-bar"><span class="orden-lbl">Ordenar por:</span>
+    <button class="chip-sel" data-ordenar="nombre">Nombre</button>
+    <button class="chip-sel" data-ordenar="grupo">Grupo</button>
+    <button class="chip-sel" data-ordenar="uso">Último uso</button></div>`;
+  html += ejs.map((e, i) =>
+    state.editEj === e.id ? formEjercicio(e) : tarjetaEjercicio(e, i, ejs.length)).join('');
 
   html += state.editEj === '__nuevo__'
     ? formEjercicio(null)
@@ -843,11 +886,11 @@ function renderEjercicios(v) {
   bindEjercicios(v);
 }
 
-function tarjetaEjercicio(e) {
+function tarjetaEjercicio(e, i, n) {
   const u = ultimoPeso(e.id);
   const unilateral = String(e.lateralidad).toLowerCase() === 'unilateral';
   return `
-    <div class="card${e.activo ? '' : ' inactivo'}">
+    <div class="card${e.activo ? '' : ' inactivo'}" data-buscar="${esc((e.nombre + ' ' + e.grupo).toLowerCase())}">
       <div class="titulo">
         <span class="nombre">${esc(e.nombre)}</span>
         <span class="ultimo-peso">${u ? fmtPeso(u.peso) + ' kg' : '—'}
@@ -862,8 +905,34 @@ function tarjetaEjercicio(e) {
         <span class="chip">descanso ${e.descanso}′</span>
         ${e.activo ? '' : '<span class="chip chip-coral">Inactivo</span>'}
       </div>
-      <button class="btn btn-sec" data-edit="${e.id}">✏️ Editar</button>
+      <div class="ej-fila-acc">
+        <button class="mini" data-mover-ej="${i}:-1" ${i === 0 ? 'disabled' : ''}>▲</button>
+        <button class="mini" data-mover-ej="${i}:1" ${i === n - 1 ? 'disabled' : ''}>▼</button>
+        <button class="btn btn-sec" data-edit="${e.id}">✏️ Editar</button>
+      </div>
     </div>`;
+}
+
+function moverEjercicioCatalogo(i, dir) {
+  const a = state.data.ejercicios, j = i + dir;
+  if (j < 0 || j >= a.length) return;
+  [a[i], a[j]] = [a[j], a[i]];
+  saveData(); marcarPendiente(true); render();
+}
+
+function ordenarCatalogo(criterio) {
+  const a = state.data.ejercicios;
+  const cmpNom = (x, y) => String(x.nombre).localeCompare(String(y.nombre), 'es');
+  const usoFecha = (e) => { const u = ultimoPeso(e.id); return u ? u.fecha : ''; };
+  const cmp = {
+    nombre: cmpNom,
+    grupo: (x, y) => String(x.grupo).localeCompare(String(y.grupo), 'es') || cmpNom(x, y),
+    uso: (x, y) => usoFecha(y).localeCompare(usoFecha(x)) || cmpNom(x, y), // más reciente primero
+  }[criterio];
+  if (!cmp) return;
+  // Inactivos al final; dentro de cada bloque, por el criterio elegido.
+  a.sort((x, y) => (x.activo === y.activo ? cmp(x, y) : (x.activo ? -1 : 1)));
+  saveData(); marcarPendiente(true); render();
 }
 
 // Formulario de alta/edición. e=null → ejercicio nuevo.
@@ -920,6 +989,12 @@ function bindEjercicios(v) {
   if (nuevo) nuevo.onclick = () => { state.editEj = '__nuevo__'; render(); };
   v.querySelectorAll('[data-edit]').forEach(btn =>
     btn.onclick = () => { state.editEj = btn.dataset.edit; render(); });
+  v.querySelectorAll('[data-mover-ej]').forEach(btn => {
+    const [i, dir] = btn.dataset.moverEj.split(':').map(Number);
+    btn.onclick = () => moverEjercicioCatalogo(i, dir);
+  });
+  v.querySelectorAll('[data-ordenar]').forEach(btn =>
+    btn.onclick = () => ordenarCatalogo(btn.dataset.ordenar));
 
   const cancelar = document.getElementById('ej-cancelar');
   if (cancelar) cancelar.onclick = () => { state.editEj = null; render(); };
@@ -1122,6 +1197,8 @@ function diaExpandido(iso, idxs) {
   });
 
   let html = '<div class="dia-detalle">';
+  html += `<div class="rut-dia-edit"><label for="rd-${iso}">Rutina del día</label>
+    <input type="text" id="rd-${iso}" class="rut-dia-input" data-rut-dia="${iso}" value="${esc(rutinaDelDia(iso) || 'Entreno Libre')}" autocapitalize="words"></div>`;
   orden.forEach(id => { html += bloqueEjercicioHist(iso, id, porEj.get(id)); });
 
   const presentes = new Set(orden);
@@ -1266,6 +1343,18 @@ function bindHistorial(v) {
   v.querySelectorAll('[data-del-dia]').forEach(el => el.onclick = (ev) => {
     ev.stopPropagation(); borrarDiaHist(el.dataset.delDia);
   });
+  v.querySelectorAll('[data-rut-dia]').forEach(inp => {
+    inp.onclick = (ev) => ev.stopPropagation();
+    inp.onchange = () => editarRutinaDia(inp.dataset.rutDia, inp.value);
+  });
+}
+
+// Renombra la rutina de un día: actualiza todas las series de esa fecha.
+function editarRutinaDia(iso, nombre) {
+  nombre = (nombre || '').trim() || 'Entreno Libre';
+  state.data.registro.forEach(r => { if (r.fecha === iso) r.rutina = nombre; });
+  delete state.histRutinaNueva[iso];
+  persistirRegistro();
 }
 
 function toggleDiaHist(iso) {
@@ -1578,6 +1667,7 @@ function renderProgreso(v) {
     </div>
     <div class="card">
       <h3>Evolución por ejercicio</h3>
+      <input class="buscador buscar-sel" type="search" placeholder="Buscar ejercicio…" data-target="prog-ej" autocapitalize="off">
       <select id="prog-ej" class="add-suelto">${ejOpts}</select>
       <div class="ej-stats"><b>${st.sesiones}</b> sesiones · récord: <b>${recordTxt}</b></div>
       <div class="selector-rutina metrica">${metChips}</div>
@@ -1670,6 +1760,10 @@ function renderRutinas(v) {
     inp.onchange = () => renombrarRutina(Number(inp.dataset.ren), inp.value));
   v.querySelectorAll('[data-del-rut]').forEach(btn =>
     btn.onclick = () => borrarRutina(Number(btn.dataset.delRut)));
+  v.querySelectorAll('[data-mover-rut]').forEach(btn => {
+    const [ri, dir] = btn.dataset.moverRut.split(':').map(Number);
+    btn.onclick = () => moverRutina(ri, dir);
+  });
   v.querySelectorAll('[data-mover]').forEach(btn => {
     const [ri, ei, dir] = btn.dataset.mover.split(':').map(Number);
     btn.onclick = () => moverEjercicio(ri, ei, dir);
@@ -1696,14 +1790,18 @@ function tarjetaRutinaEditor(r, ri) {
 
   const restantes = state.data.ejercicios.filter(e => !r.ids.includes(e.id));
   const addSel = restantes.length ? `
-    <select class="add-suelto" data-add-rut="${ri}">
+    <input class="buscador buscar-sel" type="search" placeholder="Buscar ejercicio…" data-target="add-rut-${ri}" autocapitalize="off">
+    <select id="add-rut-${ri}" class="add-suelto" data-add-rut="${ri}">
       <option value="">+ Añadir ejercicio…</option>
       ${restantes.map(e => `<option value="${e.id}">${esc(e.nombre)}</option>`).join('')}
     </select>` : '';
 
+  const total = state.data.rutinas.length;
   return `
     <div class="card rutina-edit">
       <div class="rut-cab">
+        <button class="mini" data-mover-rut="${ri}:-1" ${ri === 0 ? 'disabled' : ''}>▲</button>
+        <button class="mini" data-mover-rut="${ri}:1" ${ri === total - 1 ? 'disabled' : ''}>▼</button>
         <input type="text" class="rut-titulo" data-ren="${ri}" value="${esc(r.nombre)}" autocapitalize="words">
         <button class="mini mini-del" data-del-rut="${ri}" title="Borrar rutina">🗑️</button>
       </div>
@@ -1748,6 +1846,14 @@ function moverEjercicio(ri, ei, dir) {
   const j = ei + dir;
   if (j < 0 || j >= ids.length) return;
   [ids[ei], ids[j]] = [ids[j], ids[ei]];
+  persistirRutinas();
+}
+
+// Reordena las rutinas (afecta al orden de los chips en la pestaña Hoy).
+function moverRutina(ri, dir) {
+  const a = state.data.rutinas, j = ri + dir;
+  if (j < 0 || j >= a.length) return;
+  [a[ri], a[j]] = [a[j], a[ri]];
   persistirRutinas();
 }
 
@@ -1849,6 +1955,35 @@ document.querySelectorAll('nav button').forEach(b =>
 
 const btnUndo = document.getElementById('btn-undo');
 if (btnUndo) btnUndo.onclick = deshacer;
+
+// Pull-to-refresh: tirar hacia abajo estando arriba del todo sincroniza (iOS).
+function setupPullToRefresh() {
+  const ptr = document.getElementById('ptr');
+  if (!ptr) return;
+  let startY = 0, pulling = false, dist = 0;
+  const TH = 70;
+  const pintar = (h, txt) => { ptr.style.height = h + 'px'; ptr.textContent = txt; };
+  document.addEventListener('touchstart', (e) => {
+    pulling = window.scrollY <= 0 && e.touches.length === 1;
+    startY = pulling ? e.touches[0].clientY : 0; dist = 0;
+  }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    if (!pulling) return;
+    dist = e.touches[0].clientY - startY;
+    if (dist > 0 && window.scrollY <= 0) pintar(Math.min(dist, 110), dist > TH ? '↓ Suelta para sincronizar' : '↓ Tira para sincronizar');
+    else { dist = 0; pintar(0, ''); }
+  }, { passive: true });
+  document.addEventListener('touchend', () => {
+    if (!pulling) return;
+    pulling = false;
+    const go = dist > TH; dist = 0; pintar(0, '');
+    if (go) {
+      if (state.settings.refreshToken) sincronizar();
+      else alert('Conecta Dropbox en Ajustes para sincronizar.');
+    }
+  }, { passive: true });
+}
+setupPullToRefresh();
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 

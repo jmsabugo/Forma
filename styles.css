@@ -40,21 +40,31 @@ header h1 { font-size: 1.4rem; letter-spacing: 0.04em; }
 .btn-undo {
   margin-left: auto;
   margin-right: 12px;
-  width: 38px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   background: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.45);
   color: var(--blanco);
-  font-size: 1.5rem;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
   line-height: 1;
   border-radius: 8px;
+  padding: 7px 12px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 .btn-undo[hidden] { display: none; }
+
+/* Pull-to-refresh (tirar hacia abajo para sincronizar) */
+.ptr {
+  height: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--lavanda);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
 
 .badge { font-size: 0.9rem; }
 .badge-on { color: var(--neblina); }
@@ -230,6 +240,7 @@ select.campo {
   gap: 6px;
   margin-top: 10px;
 }
+.entrada-meta { font-size: 0.8rem; color: var(--lavanda); font-weight: 600; margin: 6px 0 0; }
 .ref-lbl { font-size: 0.78rem; color: var(--lavanda); font-weight: 600; }
 .rep-pill {
   background: var(--fondo);
@@ -464,6 +475,7 @@ select.campo {
 /* ===== Progreso (estadísticas y gráficas) ===== */
 h3 { font-size: 0.95rem; margin-bottom: 10px; }
 
+#prog-grupo { margin-bottom: 14px; }
 .kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 10px; }
 .kpis.kpis-3 { grid-template-columns: repeat(3, 1fr); }
 .card.kpi { margin-bottom: 0; text-align: center; padding: 14px 8px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
@@ -490,3 +502,34 @@ h3 { font-size: 0.95rem; margin-bottom: 10px; }
 .nota { font-size: 0.8rem; color: var(--lavanda); margin-top: 10px; line-height: 1.4; }
 .ok { color: #4E8C5C; font-weight: 700; }
 .aviso { color: var(--coral); font-weight: 700; }
+
+/* Buscadores (catálogo y selectores de ejercicio) */
+.buscador {
+  width: 100%;
+  font: inherit;
+  padding: 10px 12px;
+  border: 1px solid var(--neblina);
+  border-radius: 10px;
+  background: var(--blanco);
+  color: var(--azul);
+  margin-bottom: 10px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.buscar-sel { margin-bottom: 6px; }
+
+/* Ordenar catálogo + acciones de tarjeta */
+.orden-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+.orden-lbl { font-size: 0.78rem; color: var(--lavanda); font-weight: 600; }
+.orden-bar .chip-sel { font-size: 0.78rem; padding: 6px 12px; min-height: 36px; }
+.ej-fila-acc { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.ej-fila-acc .btn { margin-top: 0; flex: 1; }
+
+/* Rutina del día editable (Historial) */
+.rut-dia-edit { margin-bottom: 10px; }
+.rut-dia-edit label { display: block; font-size: 0.72rem; color: var(--lavanda); margin-bottom: 4px; }
+.rut-dia-input {
+  width: 100%; font: inherit; font-weight: 700;
+  padding: 8px 10px; border: 1px solid var(--neblina);
+  border-radius: 8px; background: var(--fondo); color: var(--azul);
+}
