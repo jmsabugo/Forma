@@ -5,6 +5,7 @@
   --lavanda: #8388BA;
   --neblina: #E0DBE3;
   --coral: #C07A6B;
+  --coral-fuerte: #D6452B;
   --fondo: #F7F6F9;
   --blanco: #FFFFFF;
   --radio: 14px;
@@ -262,6 +263,25 @@ select.campo {
   padding: 4px 10px;
 }
 
+/* ===== Récord de set (+3 al total a ese peso): coral fuerte + animación ===== */
+.ref-mejor { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.ref-obj {
+  font-size: 0.72rem; font-weight: 700; color: var(--coral-fuerte);
+  background: rgba(214, 69, 43, 0.1); border-radius: 999px; padding: 2px 9px;
+}
+.serie-pill.pr, .lado-pill.pr {
+  background: var(--coral-fuerte) !important; color: var(--blanco) !important;
+}
+.serie-pill.editable.pr:active, .lado-pill.editable.pr:active { background: var(--coral-fuerte); }
+.pr-flash { animation: pr-pop 1.3s ease; }
+@keyframes pr-pop {
+  0%   { transform: scale(1); box-shadow: 0 0 0 0 rgba(214, 69, 43, 0.6); }
+  20%  { transform: scale(1.28); box-shadow: 0 0 0 8px rgba(214, 69, 43, 0); }
+  45%  { transform: scale(0.94); }
+  70%  { transform: scale(1.12); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(214, 69, 43, 0); }
+}
+
 /* ===== Hechos hoy (pestaña Hoy) ===== */
 .hechos-hoy { margin-bottom: 14px; }
 .hechos-tit { font-size: 0.72rem; color: var(--coral); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 4px 6px; }
@@ -489,7 +509,28 @@ h3 { font-size: 0.95rem; margin-bottom: 10px; }
 .chart-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .chart-scroll .chart-inner { position: relative; height: 220px; }
 
-.ej-stats { font-size: 0.85rem; color: var(--lavanda); margin: 8px 0 2px; }
+/* Combo buscable de ejercicio (Progreso): lista propia, funciona en iOS */
+.combo { position: relative; }
+.combo .combo-input { margin-bottom: 0; }
+.combo-lista {
+  position: absolute;
+  left: 0; right: 0; top: 100%;
+  z-index: 30;
+  margin-top: 4px;
+  background: var(--blanco);
+  border: 1px solid var(--neblina);
+  border-radius: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  box-shadow: 0 6px 18px rgba(32, 42, 68, 0.16);
+}
+.combo-op { padding: 11px 12px; font-size: 0.92rem; cursor: pointer; border-bottom: 1px solid var(--fondo); }
+.combo-op:last-child { border-bottom: none; }
+.combo-op:active, .combo-op:hover { background: var(--neblina); }
+.combo-op.sel { color: var(--coral); font-weight: 700; }
+
+.ej-stats { font-size: 0.85rem; color: var(--lavanda); margin: 14px 0 2px; }
 .ej-stats b { color: var(--azul); }
 
 .selector-rutina.metrica { margin: 10px 0; }

@@ -22,6 +22,7 @@ let state = {
   rutinaHoy: null,  // rutina elegida para hoy (nombre, o '__libre__', o null)
   extras: [],       // ejercicios sueltos añadidos hoy fuera de la rutina
   hoyExpandido: null, // id del ejercicio "hecho hoy" con los controles desplegados
+  flashPR: null,    // clave de serie a animar al lograr un récord (+3 reps a ese peso)
   undoStack: [],    // instantáneas de datos para "deshacer" (solo en memoria)
   ejBuscar: '',     // texto del buscador del catálogo (pestaña Ejercicios)
   editEj: null,     // id del ejercicio en edición en el catálogo ('__nuevo__' al crear)
@@ -469,6 +470,77 @@ function refUltimaHtml(id, lado) {
   return `<div class="ref-ultima"><span class="ref-lbl">Última vez (${fmtFecha(ref.fecha)}):</span>${pills}</div>`;
 }
 
+// ----- Mejor set y récord por peso (señal de subir peso) -----
+// Un "set" = todas las series de un ejercicio a un mismo peso un mismo día.
+// La marca de un set es la SUMA de repeticiones de sus series. El récord salta
+// cuando el total del set de hoy supera en 3 al mejor total previo a ese peso.
+const PR_MARGEN = 3;
+
+// Mejor set histórico a un peso concreto (el día con MÁS total de reps a ese peso).
+// Con excluirHoy=true sirve de referencia a batir.
+function mejorSetPeso(id, lado, peso, excluirHoy) {
+  const pw = red2(peso);
+  const hoy = hoyISO();
+  const dias = {};
+  for (const r of state.data.registro) {
+    if (r.id !== id || (lado && r.lado !== lado) || red2(r.peso) !== pw) continue;
+    if (excluirHoy && r.fecha === hoy) continue;
+    (dias[r.fecha] = dias[r.fecha] || { series: [], total: 0 });
+    dias[r.fecha].series.push(r);
+    dias[r.fecha].total += r.reps;
+  }
+  let best = null;
+  for (const f in dias) {
+    const d = dias[f];
+    if (!best || d.total > best.total || (d.total === best.total && f > best.fecha))
+      best = { fecha: f, total: d.total, series: d.series };
+  }
+  if (best) best.series.sort((a, b) => a.serie - b.serie);
+  return best;
+}
+
+// Total del set al que pertenece r y mejor total de días ANTERIORES a ese peso.
+function statsSet(r) {
+  const pw = red2(r.peso);
+  let total = 0, mejorPrev = -1;
+  const prev = {};
+  for (const o of state.data.registro) {
+    if (o.id !== r.id || (o.lado || '') !== (r.lado || '') || red2(o.peso) !== pw) continue;
+    if (o.fecha === r.fecha) total += o.reps;
+    else if (o.fecha < r.fecha) prev[o.fecha] = (prev[o.fecha] || 0) + o.reps;
+  }
+  for (const f in prev) if (prev[f] > mejorPrev) mejorPrev = prev[f];
+  return { total, mejorPrev };
+}
+
+// ¿La serie r pertenece a un set récord? (total del set ≥ mejor previo + 3).
+function esPRset(r) {
+  if (!r) return false;
+  const { total, mejorPrev } = statsSet(r);
+  return mejorPrev >= 0 && total >= mejorPrev + PR_MARGEN;
+}
+
+// Clave de un set (ejercicio + lado + fecha + peso), para animar al lograrlo.
+function setKey(r) { return `${r.fecha}|${r.id}|${r.lado || ''}|${red2(r.peso)}`; }
+
+// Clases CSS de una serie: coral fuerte si es récord, con animación si se acaba de lograr.
+function clasePR(r) {
+  let c = '';
+  if (esPRset(r)) c += ' pr';
+  if (state.flashPR && setKey(r) === state.flashPR) c += ' pr-flash';
+  return c;
+}
+
+// Referencia "Mejor a X kg": el mejor set previo a ese peso + objetivo para subir.
+function refMejorHtml(id, lado, peso) {
+  if (!peso) return '';
+  const mj = mejorSetPeso(id, lado, peso, true);
+  if (!mj) return '';
+  const pills = mj.series.map(s => `<span class="rep-pill">${s.reps}</span>`).join('');
+  return `<div class="ref-mejor"><span class="ref-lbl">Mejor a ${fmtPeso(peso)} kg (${fmtFecha(mj.fecha)}):</span>${pills}`
+    + `<span class="ref-obj">objetivo ${mj.total + PR_MARGEN} (hoy)</span></div>`;
+}
+
 // Clave del estado de entrada en curso (por lado en unilaterales).
 function entradaKey(id, lado) { return lado ? `${id}|${lado}` : id; }
 
@@ -723,12 +795,15 @@ function tarjetaHecha(e, stepP, stepR) {
          <div class="lado-bloque">${bloqueEntrada(e, 'Der', stepP, stepR)}</div>`
       : bloqueEntrada(e, '', stepP, stepR);
   } else {
-    const pills = (lado) => seriesDeHoy(e.id, lado)
-      .map(s => `<span class="serie-pill">S${s.serie}: ${fmtPeso(s.peso)}kg × ${s.reps}</span>`).join('');
-    cuerpo = unilateral
-      ? `<div class="hh-resumen"><span class="hh-lado">izq</span> ${pills('Izq') || '—'}</div>
-         <div class="hh-resumen"><span class="hh-lado">der</span> ${pills('Der') || '—'}</div>`
-      : `<div class="hh-resumen">${pills('') || '—'}</div>`;
+    // Resumen + referencia del mejor set al peso usado hoy (por lado).
+    const bloque = (lado, etiqueta) => {
+      const ss = seriesDeHoy(e.id, lado);
+      const pills = ss.map(s => `<span class="serie-pill${clasePR(s)}">S${s.serie}: ${fmtPeso(s.peso)}kg × ${s.reps}</span>`).join('') || '—';
+      const pesoHoy = ss.length ? ss[ss.length - 1].peso : 0;
+      return `<div class="hh-resumen">${etiqueta ? `<span class="hh-lado">${etiqueta}</span> ` : ''}${pills}</div>`
+        + refMejorHtml(e.id, lado, pesoHoy);
+    };
+    cuerpo = unilateral ? bloque('Izq', 'izq') + bloque('Der', 'der') : bloque('', '');
   }
 
   return `<div class="card entrada hecha"${expandido ? ' data-activa="1"' : ''}>
@@ -810,12 +885,13 @@ function bloqueEntrada(e, lado, stepP, stepR) {
 
   const seriesHoyHtml = hoy.length ? `
     <div class="series-hoy">
-      ${hoy.map(s => `<span class="serie-pill">S${s.serie}: ${fmtPeso(s.peso)}kg × ${s.reps}</span>`).join('')}
+      ${hoy.map(s => `<span class="serie-pill${clasePR(s)}">S${s.serie}: ${fmtPeso(s.peso)}kg × ${s.reps}</span>`).join('')}
     </div>` : '';
 
   return `
     ${cabLado}
     ${refUltimaHtml(e.id, lado)}
+    ${refMejorHtml(e.id, lado, base.peso)}
     <div class="control">
       <button class="paso" data-id="${e.id}" data-lado="${lado}" data-campo="peso" data-paso="${-stepP}">−</button>
       <div class="lectura"><input class="num num-input" type="text" inputmode="decimal" data-edit="peso" data-id="${e.id}" data-lado="${lado}" value="${fmtPeso(base.peso)}"><span class="ud">kg</span></div>
@@ -863,9 +939,16 @@ function guardarSerie(id, lado) {
     rutina: rutinaParaGuardar(), notas: '',
   });
   state.hoyExpandido = id; // queda en "Hechos hoy" con los controles abiertos
+  // ¿Este set acaba de batir el récord a ese peso (+3 al total)? → animación.
+  const nueva = state.data.registro[state.data.registro.length - 1];
+  const { total, mejorPrev } = statsSet(nueva);
+  const cruzaAhora = mejorPrev >= 0 && total >= mejorPrev + PR_MARGEN
+    && (total - nueva.reps) < mejorPrev + PR_MARGEN;
+  state.flashPR = cruzaAhora ? setKey(nueva) : null;
   saveData();
   marcarPendiente(true);
   render();
+  if (state.flashPR) setTimeout(() => { state.flashPR = null; }, 1400);
   // Sitúa la pantalla en la tarjeta activa (que acaba de subir a "Hechos hoy").
   const activa = document.querySelector('[data-activa]');
   if (activa) {
@@ -1272,7 +1355,7 @@ function pillSerieHist(iso, id, i) {
       <button class="mini mini-x" data-cancel-serie="1" title="Cancelar">✕</button>
     </span>`;
   }
-  return `<span class="serie-pill editable" data-edit-serie="${i}">S${r.serie}: ${fmtPeso(r.peso)}kg × ${r.reps}</span>`;
+  return `<span class="serie-pill editable${clasePR(r)}" data-edit-serie="${i}">S${r.serie}: ${fmtPeso(r.peso)}kg × ${r.reps}</span>`;
 }
 
 function ladoPillHist(lado, i) {
@@ -1286,7 +1369,7 @@ function ladoPillHist(lado, i) {
       <button class="mini mini-x" data-cancel-serie="1" title="Cancelar">✕</button>
     </span>`;
   }
-  return `<span class="lado-pill editable" data-edit-serie="${i}">${lado.toLowerCase()} ${fmtPeso(r.peso)}kg × ${r.reps}</span>`;
+  return `<span class="lado-pill editable${clasePR(r)}" data-edit-serie="${i}">${lado.toLowerCase()} ${fmtPeso(r.peso)}kg × ${r.reps}</span>`;
 }
 
 function diaVacioAbierto(dt) {
@@ -1654,8 +1737,12 @@ function renderProgreso(v) {
 
   const metChips = [['peso', 'Peso top'], ['1rm', '1RM est.'], ['tonelaje', 'Tonelaje'], ['frecuencia', 'Frecuencia']].map(([k, t]) =>
     `<button class="chip-sel ${metrica === k ? 'sel' : ''}" data-metrica="${k}">${t}</button>`).join('');
-  const ejOpts = state.data.ejercicios.filter(e => conReg.includes(e.id))
-    .map(e => `<option value="${e.id}" ${e.id === state.prog.ejercicio ? 'selected' : ''}>${esc(e.nombre)}</option>`).join('');
+  const ejsReg = state.data.ejercicios.filter(e => conReg.includes(e.id));
+  const ejActualNom = (ejsReg.find(e => e.id === state.prog.ejercicio) || {}).nombre || '';
+  // Nº de puntos de la gráfica de evolución (para el ancho desplazable).
+  const evN = metrica === 'frecuencia'
+    ? frecuenciaEjercicio(state.prog.ejercicio, periodo).labels.length
+    : serieEvolucion(state.prog.ejercicio, metrica, periodo).labels.length;
   const st = statsEjercicio(state.prog.ejercicio, metrica, periodo);
   const recordTxt = st.record
     ? esc(st.record.valor) + (st.record.fecha ? ` (${fmtFecha(st.record.fecha)})` : '')
@@ -1677,11 +1764,16 @@ function renderProgreso(v) {
     </div>
     <div class="card">
       <h3>Evolución por ejercicio</h3>
-      <input class="buscador buscar-sel" type="search" placeholder="Buscar ejercicio…" data-target="prog-ej" autocapitalize="off">
-      <select id="prog-ej" class="add-suelto">${ejOpts}</select>
+      <div class="combo" id="prog-ej-combo">
+        <input id="prog-ej-input" class="buscador combo-input" type="text" autocapitalize="off"
+               placeholder="Buscar ejercicio…" value="${esc(ejActualNom)}">
+        <div class="combo-lista" id="prog-ej-lista" hidden>
+          ${ejsReg.map(e => `<div class="combo-op${e.id === state.prog.ejercicio ? ' sel' : ''}" data-ej="${e.id}" data-nom="${esc(e.nombre.toLowerCase())}">${esc(e.nombre)}</div>`).join('')}
+        </div>
+      </div>
       <div class="ej-stats"><b>${st.sesiones}</b> sesiones · récord: <b>${recordTxt}</b></div>
       <div class="selector-rutina metrica">${metChips}</div>
-      <div class="chart-box"><canvas id="ch-ev"></canvas></div>
+      <div class="chart-scroll"><div class="chart-inner" style="width: max(100%, ${evN * 36}px)"><canvas id="ch-ev"></canvas></div></div>
     </div>`;
 
   const selG = document.getElementById('prog-grupo');
@@ -1689,8 +1781,24 @@ function renderProgreso(v) {
   v.querySelectorAll('[data-periodo]').forEach(b => b.onclick = () => { state.prog.periodo = b.dataset.periodo; render(); });
   v.querySelectorAll('[data-kpi]').forEach(b => b.onclick = () => { state.prog.kpi = b.dataset.kpi; render(); });
   v.querySelectorAll('[data-metrica]').forEach(b => b.onclick = () => { state.prog.metrica = b.dataset.metrica; render(); });
-  const sel = document.getElementById('prog-ej');
-  if (sel) sel.onchange = () => { state.prog.ejercicio = sel.value; render(); };
+
+  // Buscador de ejercicio (combo propio: funciona en iOS, donde <option hidden> no).
+  const inp = document.getElementById('prog-ej-input');
+  const lista = document.getElementById('prog-ej-lista');
+  if (inp && lista) {
+    const ops = [...lista.querySelectorAll('.combo-op')];
+    const filtrar = (q) => {
+      q = q.trim().toLowerCase();
+      ops.forEach(op => { op.style.display = (!q || op.dataset.nom.includes(q)) ? '' : 'none'; });
+    };
+    inp.onfocus = () => { inp.value = ''; lista.hidden = false; filtrar(''); };
+    inp.oninput = () => { lista.hidden = false; filtrar(inp.value); };
+    inp.onblur = () => setTimeout(() => { lista.hidden = true; }, 200);
+    ops.forEach(op => {
+      op.onmousedown = (e) => e.preventDefault();   // evita el blur antes del click
+      op.onclick = () => { state.prog.ejercicio = op.dataset.ej; render(); };
+    });
+  }
 
   dibujarGraficas();
 }
@@ -1748,9 +1856,8 @@ function dibujarGraficas() {
     }
   }
 
-  // La tendencia arranca mostrando lo más reciente (a la derecha).
-  const sc = document.querySelector('.chart-scroll');
-  if (sc) sc.scrollLeft = sc.scrollWidth;
+  // Ambas gráficas arrancan mostrando lo más reciente (a la derecha).
+  document.querySelectorAll('.chart-scroll').forEach(sc => { sc.scrollLeft = sc.scrollWidth; });
 }
 
 // ===== Editor de rutinas =====
