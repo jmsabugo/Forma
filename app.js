@@ -1453,8 +1453,6 @@ function epley(peso, reps) { return peso * (1 + reps / 30); }
 
 function ejPorId(id) { return state.data.ejercicios.find(e => e.id === id); }
 
-function fmtFechaCorta(iso) { const [, m, d] = iso.split('-'); return `${+d}/${+m}`; }
-
 // Rango [desde, hasta] (ISO) del periodo elegido, por calendario hasta hoy.
 function rangoPeriodo(periodo) {
   const hoy = isoADate(hoyISO());
@@ -1555,9 +1553,10 @@ function statsEjercicio(id, metrica, escala) {
       const b = rows.reduce((m, r) => (r.peso > m.peso ? r : m));
       record = { valor: fmtPeso(b.peso) + ' kg', fecha: b.fecha };
     } else if (metrica === 'tonelaje') {
-      const ev = serieEvolucion(id, 'tonelaje');
+      const ev = serieEvolucion(id, 'tonelaje', escala);
       let bi = 0; ev.valores.forEach((v, k) => { if (v > ev.valores[bi]) bi = k; });
-      record = { valor: ev.valores[bi] + ' kg', fecha: ev.fechas[bi] };
+      const unidad = { semana: 'semana', mes: 'mes', año: 'año' }[escala];
+      record = { valor: `${ev.valores[bi]} kg/${unidad} (${ev.labels[bi]})`, fecha: null };
     } else if (metrica === 'frecuencia') {
       const fr = frecuenciaEjercicio(id, escala);
       let bi = 0; fr.valores.forEach((v, k) => { if (v > fr.valores[bi]) bi = k; });
@@ -1572,23 +1571,23 @@ function statsEjercicio(id, metrica, escala) {
   return { sesiones, record };
 }
 
-// Serie temporal de un ejercicio (un punto por sesión) según la métrica.
-function serieEvolucion(id, metrica) {
-  const porFecha = new Map();
-  state.data.registro.forEach(r => {
-    if (r.id !== id) return;
-    if (!porFecha.has(r.fecha)) porFecha.set(r.fecha, []);
-    porFecha.get(r.fecha).push(r);
-  });
+// Serie temporal de un ejercicio agregada por periodo (semana/mes/año) según la métrica.
+// Peso top y 1RM: el mejor valor del periodo; Tonelaje: la suma del periodo.
+// Solo se pintan los periodos con al menos una serie de ese ejercicio.
+function serieEvolucion(id, metrica, escala) {
   const e = ejPorId(id);
-  const fechas = [...porFecha.keys()].sort();
-  const valores = fechas.map(f => {
-    const rs = porFecha.get(f);
-    if (metrica === 'peso') return red2(Math.max(...rs.map(r => r.peso)));
-    if (metrica === 'tonelaje') return Math.round(rs.reduce((s, r) => s + cargaEfectiva(e, r.peso) * (r.reps || 0), 0));
-    return red2(Math.max(...rs.map(r => epley(r.peso, r.reps || 0)))); // 1rm
+  const labels = [], valores = [];
+  listaPeriodos(escala).forEach(p => {
+    const rs = state.data.registro.filter(r => r.id === id && r.fecha >= p.desde && r.fecha <= p.hasta);
+    if (!rs.length) return; // sin datos en este periodo: no se pinta punto
+    let v;
+    if (metrica === 'peso') v = red2(Math.max(...rs.map(r => r.peso)));
+    else if (metrica === 'tonelaje') v = Math.round(rs.reduce((s, r) => s + cargaEfectiva(e, r.peso) * (r.reps || 0), 0));
+    else v = red2(Math.max(...rs.map(r => epley(r.peso, r.reps || 0)))); // 1rm
+    labels.push(p.label);
+    valores.push(v);
   });
-  return { fechas, valores };
+  return { labels, valores };
 }
 
 // Rachas de constancia, contando por semanas (lunes a domingo) con ≥1 entreno.
@@ -1737,11 +1736,11 @@ function dibujarGraficas() {
         options: opcionesGrafica(true, false),
       }));
     } else {
-      const ev = serieEvolucion(state.prog.ejercicio, metrica);
+      const ev = serieEvolucion(state.prog.ejercicio, metrica, periodo);
       state.prog._charts.push(new Chart(ce, {
         type: 'line',
         data: {
-          labels: ev.fechas.map(fmtFechaCorta),
+          labels: ev.labels,
           datasets: [{ data: ev.valores, borderColor: PAL.coral, backgroundColor: PAL.coral, tension: 0.25, pointRadius: 3, fill: false }],
         },
         options: opcionesGrafica(false, false),
