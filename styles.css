@@ -432,12 +432,28 @@ select.campo {
 }
 .hist-chev { color: var(--lavanda); font-size: 0.9rem; flex: 0 0 auto; }
 
-.dia-detalle {
+/* Día abierto: cabecera + detalle en UNA sola tarjeta unificada */
+.hist-dia-card {
   background: var(--blanco);
   border-radius: var(--radio);
-  padding: 4px 14px 14px;
-  margin: -4px 0 10px;
   box-shadow: 0 1px 3px rgba(32, 42, 68, 0.08);
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+.hist-dia-card.es-hoy { box-shadow: 0 0 0 2px var(--coral); }
+.hist-dia-card .hist-dia {
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  margin: 0;
+  opacity: 1;
+}
+.hist-dia-card .dia-detalle {
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  margin: 0;
+  padding: 2px 14px 14px;
 }
 .ej-hist { padding: 10px 0; border-top: 1px solid var(--neblina); }
 .ej-hist:first-child { border-top: none; }

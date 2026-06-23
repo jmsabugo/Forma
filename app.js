@@ -1269,7 +1269,7 @@ function filaDiaHist(dt, porFecha) {
   const nReps = filas.reduce((s, f) => s + (f.reps || 0), 0);
   const abierto = state.histAbierto === iso;
 
-  let html = `<div class="hist-dia${esHoy ? ' es-hoy' : ''}${abierto ? ' abierto' : ''}" data-toggle="${iso}">
+  const cab = `<div class="hist-dia${esHoy ? ' es-hoy' : ''}${abierto ? ' abierto' : ''}" data-toggle="${iso}">
     <div class="${fechaCls}"><span class="dow">${dow}</span><span class="dnum">${dt.getDate()}</span></div>
     <div class="hist-info">
       <div class="hist-rutina">${esc(rutina)}${esHoy ? ' <span class="hoy-badge">hoy</span>' : ''}</div>
@@ -1277,8 +1277,9 @@ function filaDiaHist(dt, porFecha) {
     </div>
     <span class="hist-chev">${abierto ? '▴' : '▸'}</span>
   </div>`;
-  if (abierto) html += diaExpandido(iso, idxs);
-  return html;
+  // Abierto: cabecera y detalle van dentro de una sola tarjeta unificada.
+  if (abierto) return `<div class="hist-dia-card${esHoy ? ' es-hoy' : ''}">${cab}${diaExpandido(iso, idxs)}</div>`;
+  return cab;
 }
 
 function diaExpandido(iso, idxs) {
@@ -1303,7 +1304,7 @@ function diaExpandido(iso, idxs) {
       ${restantes.map(e => `<option value="${e.id}">${esc(e.nombre)}</option>`).join('')}
     </select>`;
   }
-  html += `<button class="btn btn-coral" data-del-dia="${iso}">Borrar día</button></div>`;
+  html += `</div>`;
   return html;
 }
 
@@ -1393,11 +1394,12 @@ function diaVacioAbierto(dt) {
         ${state.data.ejercicios.filter(e => e.activo).map(e => `<option value="${e.id}">${esc(e.nombre)}</option>`).join('')}
       </select>`;
   }
-  return `<div class="hist-dia vacio abierto${esHoy ? ' es-hoy' : ''}" data-toggle="${iso}">
+  return `<div class="hist-dia-card${esHoy ? ' es-hoy' : ''}">
+    <div class="hist-dia vacio abierto" data-toggle="${iso}">
       <div class="${fechaCls}"><span class="dow">${dow}</span><span class="dnum">${dt.getDate()}</span></div>
       <div class="hist-resumen">nuevo entreno</div>
       <span class="hist-chev">▴</span>
-    </div><div class="dia-detalle">${panel}</div>`;
+    </div><div class="dia-detalle">${panel}</div></div>`;
 }
 
 function bindHistorial(v) {
@@ -1434,9 +1436,6 @@ function bindHistorial(v) {
   });
   v.querySelectorAll('[data-add-ej-dia]').forEach(el =>
     el.onchange = () => anadirSerieDia(el.dataset.addEjDia, el.value));
-  v.querySelectorAll('[data-del-dia]').forEach(el => el.onclick = (ev) => {
-    ev.stopPropagation(); borrarDiaHist(el.dataset.delDia);
-  });
   v.querySelectorAll('[data-rut-dia]').forEach(inp => {
     inp.onclick = (ev) => ev.stopPropagation();
     inp.onchange = () => editarRutinaDia(inp.dataset.rutDia, inp.value);
@@ -1500,15 +1499,6 @@ function anadirSerieDia(iso, id) {
       rutina, notas: '',
     });
   });
-  persistirRegistro();
-}
-
-function borrarDiaHist(iso) {
-  if (!confirmar(`¿Borrar todo el entreno del ${fmtFecha(iso)}? Se eliminarán todas sus series.`)) return;
-  state.data.registro = state.data.registro.filter(r => r.fecha !== iso);
-  delete state.histRutinaNueva[iso];
-  state.histAbierto = null;
-  state.histEdit = null;
   persistirRegistro();
 }
 
