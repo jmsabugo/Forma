@@ -65,6 +65,12 @@ header h1 { font-size: 1.4rem; letter-spacing: 0.04em; }
   color: var(--lavanda);
   font-size: 0.8rem;
   font-weight: 600;
+  transition: height 0.25s ease;
+}
+.ptr-spin { animation: ptr-pulse 0.9s ease-in-out infinite; }
+@keyframes ptr-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
 }
 
 .badge { font-size: 0.9rem; }
@@ -144,6 +150,16 @@ h2:first-child { margin-top: 0; }
   padding: 3px 10px;
 }
 .chip-coral { background: var(--coral); color: var(--blanco); }
+
+.ej-notas {
+  margin: 8px 0 0;
+  font-size: 0.82rem;
+  font-style: italic;
+  color: var(--azul);
+  background: var(--neblina);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
 
 .dato-grande {
   text-align: center;

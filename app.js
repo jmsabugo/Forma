@@ -370,10 +370,11 @@ async function subirExcel() {
 }
 
 async function sincronizar(silencioso) {
-  if (!state.settings.refreshToken) { if (!silencioso) alert('Conecta primero con Dropbox en Ajustes.'); return; }
+  if (!state.settings.refreshToken) { if (!silencioso) alert('Conecta primero con Dropbox en Ajustes.'); return false; }
   suspenderUndo = true;
   const btn = document.getElementById('btn-sync');
   if (btn) { btn.disabled = true; btn.textContent = 'Sincronizando…'; }
+  let ok = true;
   try {
     const pendiente = !!localStorage.getItem(LS.pending);
     if (pendiente) {
@@ -388,6 +389,7 @@ async function sincronizar(silencioso) {
     saveSettings();
     render();
   } catch (e) {
+    ok = false;
     if (silencioso) console.warn('Sincronización automática falló:', e.message);
     else alert(e.message);
   } finally {
@@ -397,6 +399,7 @@ async function sincronizar(silencioso) {
     lastGood = state.data ? JSON.stringify(state.data) : null;
     pintarBadge();
   }
+  return ok;
 }
 
 // ===== Importar / exportar manual (modo sin Dropbox) =====
@@ -999,6 +1002,7 @@ function tarjetaEjercicio(e, i, n) {
         <span class="chip">descanso ${e.descanso}′</span>
         ${e.activo ? '' : '<span class="chip chip-coral">Inactivo</span>'}
       </div>
+      ${e.notas ? `<p class="ej-notas">${esc(e.notas)}</p>` : ''}
       <div class="ej-fila-acc">
         <button class="mini" data-mover-ej="${i}:-1" ${i === 0 ? 'disabled' : ''}>▲</button>
         <button class="mini" data-mover-ej="${i}:1" ${i === n - 1 ? 'disabled' : ''}>▼</button>
@@ -2084,11 +2088,15 @@ function setupPullToRefresh() {
   document.addEventListener('touchend', () => {
     if (!pulling) return;
     pulling = false;
-    const go = dist > TH; dist = 0; pintar(0, '');
-    if (go) {
-      if (state.settings.refreshToken) sincronizar();
-      else alert('Conecta Dropbox en Ajustes para sincronizar.');
-    }
+    const go = dist > TH; dist = 0;
+    if (!go) { pintar(0, ''); return; }
+    if (!state.settings.refreshToken) { pintar(0, ''); alert('Conecta Dropbox en Ajustes para sincronizar.'); return; }
+    ptr.classList.add('ptr-spin');
+    pintar(60, '⟳ Sincronizando…');
+    sincronizar().then((ok) => {
+      pintar(60, ok ? '✓ Sincronizado' : '✕ Error al sincronizar');
+      setTimeout(() => pintar(0, ''), 900);
+    }).finally(() => ptr.classList.remove('ptr-spin'));
   }, { passive: true });
 }
 setupPullToRefresh();
