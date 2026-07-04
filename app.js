@@ -1631,9 +1631,9 @@ function statsEjercicio(id, metrica, escala) {
       record = { valor: fmtPeso(b.peso) + ' kg', fecha: b.fecha };
     } else if (metrica === 'tonelaje') {
       const ev = serieEvolucion(id, 'tonelaje', escala);
-      let bi = 0; ev.valores.forEach((v, k) => { if (v > ev.valores[bi]) bi = k; });
+      let bi = -1; ev.valores.forEach((v, k) => { if (v != null && (bi < 0 || v > ev.valores[bi])) bi = k; });
       const unidad = { semana: 'semana', mes: 'mes', año: 'año' }[escala];
-      record = { valor: `${ev.valores[bi]} kg/${unidad} (${ev.labels[bi]})`, fecha: null };
+      if (bi >= 0) record = { valor: `${ev.valores[bi]} kg/${unidad} (${ev.labels[bi]})`, fecha: null };
     } else if (metrica === 'frecuencia') {
       const fr = frecuenciaEjercicio(id, escala);
       let bi = 0; fr.valores.forEach((v, k) => { if (v > fr.valores[bi]) bi = k; });
@@ -1650,21 +1650,37 @@ function statsEjercicio(id, metrica, escala) {
 
 // Serie temporal de un ejercicio agregada por periodo (semana/mes/año) según la métrica.
 // Peso top y 1RM: el mejor valor del periodo; Tonelaje: la suma del periodo.
-// Solo se pintan los periodos con al menos una serie de ese ejercicio.
+// Cubre TODOS los periodos desde el primer dato (como Frecuencia), para que la
+// gráfica siempre se pueda desplazar hasta el principio; los periodos sin datos
+// del ejercicio van como null (la línea los salta con spanGaps).
 function serieEvolucion(id, metrica, escala) {
   const e = ejPorId(id);
   const labels = [], valores = [];
   listaPeriodos(escala).forEach(p => {
     const rs = state.data.registro.filter(r => r.id === id && r.fecha >= p.desde && r.fecha <= p.hasta);
-    if (!rs.length) return; // sin datos en este periodo: no se pinta punto
-    let v;
-    if (metrica === 'peso') v = red2(Math.max(...rs.map(r => r.peso)));
-    else if (metrica === 'tonelaje') v = Math.round(rs.reduce((s, r) => s + cargaEfectiva(e, r.peso) * (r.reps || 0), 0));
-    else v = red2(Math.max(...rs.map(r => epley(r.peso, r.reps || 0)))); // 1rm
+    let v = null;
+    if (rs.length) {
+      if (metrica === 'peso') v = red2(Math.max(...rs.map(r => r.peso)));
+      else if (metrica === 'tonelaje') v = Math.round(rs.reduce((s, r) => s + cargaEfectiva(e, r.peso) * (r.reps || 0), 0));
+      else v = red2(Math.max(...rs.map(r => epley(r.peso, r.reps || 0)))); // 1rm
+    }
     labels.push(p.label);
     valores.push(v);
   });
   return { labels, valores };
+}
+
+// Sesiones de un ejercicio, de la más reciente a la primera, con sus series ordenadas.
+function historialEjercicio(id) {
+  const porFecha = new Map();
+  state.data.registro.filter(r => r.id === id).forEach(r => {
+    if (!porFecha.has(r.fecha)) porFecha.set(r.fecha, []);
+    porFecha.get(r.fecha).push(r);
+  });
+  return [...porFecha.keys()].sort().reverse().map(f => ({
+    fecha: f,
+    series: porFecha.get(f).sort((a, b) => (a.serie - b.serie) || (a.lado || '').localeCompare(b.lado || '')),
+  }));
 }
 
 // Rachas de constancia, contando por semanas (lunes a domingo) con ≥1 entreno.
@@ -1733,10 +1749,9 @@ function renderProgreso(v) {
     `<button class="chip-sel ${metrica === k ? 'sel' : ''}" data-metrica="${k}">${t}</button>`).join('');
   const ejsReg = state.data.ejercicios.filter(e => conReg.includes(e.id));
   const ejActualNom = (ejsReg.find(e => e.id === state.prog.ejercicio) || {}).nombre || '';
-  // Nº de puntos de la gráfica de evolución (para el ancho desplazable).
-  const evN = metrica === 'frecuencia'
-    ? frecuenciaEjercicio(state.prog.ejercicio, periodo).labels.length
-    : serieEvolucion(state.prog.ejercicio, metrica, periodo).labels.length;
+  // Nº de puntos de la gráfica de evolución (para el ancho desplazable):
+  // todas las métricas cubren todos los periodos desde el primer dato.
+  const evN = listaPeriodos(periodo).length;
   const st = statsEjercicio(state.prog.ejercicio, metrica, periodo);
   const recordTxt = st.record
     ? esc(st.record.valor) + (st.record.fecha ? ` (${fmtFecha(st.record.fecha)})` : '')
@@ -1768,6 +1783,15 @@ function renderProgreso(v) {
       <div class="ej-stats"><b>${st.sesiones}</b> sesiones · récord: <b>${recordTxt}</b></div>
       <div class="selector-rutina metrica">${metChips}</div>
       <div class="chart-scroll"><div class="chart-inner" style="width: max(100%, ${evN * 36}px)"><canvas id="ch-ev"></canvas></div></div>
+      <h4 class="ev-hist-tit">Todas las sesiones</h4>
+      <div class="ev-hist">${historialEjercicio(state.prog.ejercicio).map(s => `
+        <div class="ev-hist-dia">
+          <span class="ev-hist-fecha">${fmtFecha(s.fecha)}</span>
+          <span class="ev-hist-series">${s.series.map(r =>
+            `<span class="serie-pill${clasePR(r)}">S${r.serie}${r.lado ? (r.lado === 'Izq' ? '·I' : '·D') : ''}: ${fmtPeso(r.peso)}kg × ${r.reps}</span>`).join('')}
+          </span>
+        </div>`).join('')}
+      </div>
     </div>`;
 
   const selG = document.getElementById('prog-grupo');
@@ -1843,7 +1867,7 @@ function dibujarGraficas() {
         type: 'line',
         data: {
           labels: ev.labels,
-          datasets: [{ data: ev.valores, borderColor: PAL.coral, backgroundColor: PAL.coral, tension: 0.25, pointRadius: 3, fill: false }],
+          datasets: [{ data: ev.valores, borderColor: PAL.coral, backgroundColor: PAL.coral, tension: 0.25, pointRadius: 3, fill: false, spanGaps: true }],
         },
         options: opcionesGrafica(false, false),
       }));

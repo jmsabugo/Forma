@@ -565,6 +565,17 @@ h3 { font-size: 0.95rem; margin-bottom: 10px; }
 .ej-stats { font-size: 0.85rem; color: var(--lavanda); margin: 14px 0 2px; }
 .ej-stats b { color: var(--azul); }
 
+/* Historial completo del ejercicio seleccionado (Progreso): lista desplazable */
+.ev-hist-tit { font-size: 0.85rem; color: var(--lavanda); margin: 14px 0 4px; }
+.ev-hist {
+  max-height: 300px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.ev-hist-dia { padding: 8px 0; border-top: 1px solid var(--neblina); }
+.ev-hist-fecha { display: block; font-size: 0.8rem; font-weight: 700; color: var(--azul); margin-bottom: 4px; }
+.ev-hist-series { display: flex; flex-wrap: wrap; gap: 4px; }
+
 .selector-rutina.metrica { margin: 10px 0; }
 .selector-rutina.metrica .chip-sel { font-size: 0.8rem; padding: 8px 12px; min-height: 38px; }
 
