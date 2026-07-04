@@ -2080,6 +2080,13 @@ function renderAjustes(v) {
       <button class="btn btn-sec" id="btn-exportar">Exportar Excel</button>
       <p class="nota">Para probar sin Dropbox: importa <b>Forma_Datos.xlsx</b> a mano y
       la app trabajará con la copia local del navegador.</p>
+    </div>
+
+    <h2>Aplicación</h2>
+    <div class="card">
+      <button class="btn btn-sec" id="btn-actualizar">🔄 Buscar actualización</button>
+      <p class="nota">Descarga de GitHub la última versión del código y recarga la app.
+      No toca tus datos ni la conexión con Dropbox. Úsalo tras publicar cambios.</p>
     </div>`;
 
   const on = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
@@ -2092,6 +2099,7 @@ function renderAjustes(v) {
   });
   on('btn-importar', () => document.getElementById('file-import').click());
   on('btn-exportar', exportarArchivo);
+  on('btn-actualizar', forzarActualizacion);
   const pc = document.getElementById('pref-confirmar');
   if (pc) pc.onchange = () => setConfig('confirmar_borrados', pc.checked ? 'SI' : 'NO', 'Pedir confirmación antes de borrar (SI/NO).');
   const pd = document.getElementById('pref-deshacer');
@@ -2101,6 +2109,32 @@ function renderAjustes(v) {
   document.getElementById('file-import').onchange = importarArchivo;
   document.getElementById('ruta').onchange = guardarAjustesForm;
   document.getElementById('app-key').onchange = guardarAjustesForm;
+}
+
+// Fuerza traer la última versión del código desde GitHub: borra las cachés del
+// service worker, lo desregistra y recarga. NO toca localStorage (datos y token
+// de Dropbox a salvo). Si hay cambios sin subir, avisa antes de recargar.
+async function forzarActualizacion() {
+  if (localStorage.getItem(LS.pending) &&
+      !confirm('Tienes cambios sin sincronizar con Dropbox. Se conservan en este dispositivo, pero mejor sincroniza antes. ¿Actualizar la app igualmente?')) {
+    return;
+  }
+  const btn = document.getElementById('btn-actualizar');
+  if (btn) { btn.disabled = true; btn.textContent = 'Actualizando…'; }
+  try {
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+  } catch (e) {
+    console.warn('No se pudo limpiar la caché al actualizar', e);
+  }
+  // Recarga con parámetro anti-caché para saltarse también la caché HTTP del navegador.
+  location.replace(location.pathname + '?v=' + Date.now());
 }
 
 function guardarAjustesForm() {
