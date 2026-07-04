@@ -133,7 +133,7 @@ function marcarPendiente(v) {
 // cabecera (parseHoja), así que reordenar columnas en el Excel no rompe nada.
 const CABECERAS = {
   Ejercicios: ['ID', 'Ejercicio', 'Grupo muscular', 'Equipamiento', 'Lateralidad',
-               'Descanso (min)', 'Series objetivo', 'Reps objetivo', 'Activo', 'Notas'],
+               'Descanso (min)', 'Series objetivo', 'Reps objetivo', 'Activo', 'Notas', 'Polea 1/2'],
   Registro: ['Fecha', 'ID', 'Ejercicio', 'Serie', 'Lado', 'Repeticiones', 'Peso (kg)', 'Rutina', 'Notas'],
   Config: ['Clave', 'Valor', 'Descripcion'],
   Rutinas: ['Rutina', 'Orden', 'ID', 'Ejercicio'],
@@ -179,6 +179,7 @@ function parseWorkbook(buf) {
     repsObj: Number(celda(f, ej.idx, 'Reps objetivo')) || 0,
     activo: String(celda(f, ej.idx, 'Activo')).toUpperCase() !== 'NO',
     notas: celda(f, ej.idx, 'Notas') || '',
+    polea12: String(celda(f, ej.idx, 'Polea 1/2')).trim().toUpperCase() === 'SI',
   }));
 
   const rg = parseHoja(wb, 'Registro', true);
@@ -229,6 +230,7 @@ function buildWorkbook() {
   const aoaEj = [CABECERAS.Ejercicios].concat(d.ejercicios.map(e => [
     e.id, e.nombre, e.grupo, e.equipamiento, e.lateralidad,
     e.descanso, e.seriesObj, e.repsObj, e.activo ? 'SI' : 'NO', e.notas,
+    e.polea12 ? 'SI' : 'NO',
   ]));
   const aoaReg = [CABECERAS.Registro].concat(d.registro.map(r => [
     r.fecha, r.id, r.ejercicio, r.serie, r.lado || '', r.reps, r.peso, r.rutina || '', r.notas,
@@ -1011,6 +1013,7 @@ function tarjetaEjercicio(e, i, n) {
       <div class="chips">
         <span class="chip">${esc(e.grupo)}</span>
         <span class="chip">${esc(e.equipamiento)}</span>
+        ${esPolea(e) && e.polea12 ? '<span class="chip">Polea 1/2</span>' : ''}
         ${unilateral ? '<span class="chip chip-coral">Unilateral · reps por lado</span>' : ''}
         <span class="chip">${e.seriesObj}×${e.repsObj}</span>
         <span class="chip">descanso ${e.descanso}′</span>
@@ -1071,6 +1074,10 @@ function formEjercicio(e) {
           <select id="f-lat" class="campo">${ops(LATERALIDADES, val.lateralidad)}</select>
         </div>
       </div>
+      <label class="ej-activo" id="f-p12-wrap" style="display:${esPolea(val) ? '' : 'none'}">
+        <input type="checkbox" id="f-p12" ${val.polea12 ? 'checked' : ''}>
+        Polea con proporción 1/2 (la carga real es la mitad del peso seleccionado)
+      </label>
       <div class="fila2">
         <div>
           <label for="f-desc">Descanso (min)</label>
@@ -1107,6 +1114,13 @@ function bindEjercicios(v) {
   });
   v.querySelectorAll('[data-ordenar]').forEach(btn =>
     btn.onclick = () => ordenarCatalogo(btn.dataset.ordenar));
+
+  // La casilla "Polea 1/2" solo tiene sentido con equipamiento Polea.
+  const equipSel = document.getElementById('f-equip');
+  if (equipSel) equipSel.onchange = () => {
+    document.getElementById('f-p12-wrap').style.display =
+      equipSel.value.toLowerCase() === 'polea' ? '' : 'none';
+  };
 
   const cancelar = document.getElementById('ej-cancelar');
   if (cancelar) cancelar.onclick = () => { state.editEj = null; render(); };
@@ -1148,6 +1162,9 @@ function guardarEjercicio() {
     activo: document.getElementById('f-activo').checked,
     notas: document.getElementById('f-notas').value.trim(),
   };
+  // Solo aplica a poleas: si se cambia el equipamiento, la marca 1/2 se limpia.
+  datos.polea12 = datos.equipamiento.toLowerCase() === 'polea'
+    && document.getElementById('f-p12').checked;
 
   if (state.editEj === '__nuevo__') {
     state.data.ejercicios.push(Object.assign({ id: nuevoIdEjercicio() }, datos));
@@ -1536,7 +1553,10 @@ const PAL = { azul: '#202A44', coral: '#C07A6B', lavanda: '#8388BA', neblina: '#
 // Carga efectiva para el tonelaje: las mancuernas cuentan doble (un par); el
 // resto, tal cual se apunta. (Decisión del proyecto.)
 function cargaEfectiva(e, peso) {
-  return (e && String(e.equipamiento).toLowerCase() === 'mancuernas') ? peso * 2 : peso;
+  if (!e) return peso;
+  if (String(e.equipamiento).toLowerCase() === 'mancuernas') return peso * 2;
+  if (esPolea(e) && e.polea12) return peso / 2; // polea en proporción 1/2: carga real = mitad
+  return peso;
 }
 
 // 1RM estimado (Epley): peso × (1 + reps/30).
