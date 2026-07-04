@@ -1074,9 +1074,9 @@ function formEjercicio(e) {
           <select id="f-lat" class="campo">${ops(LATERALIDADES, val.lateralidad)}</select>
         </div>
       </div>
-      <label class="ej-activo" id="f-p12-wrap" style="display:${esPolea(val) ? '' : 'none'}">
+      <label class="ej-activo${esPolea(val) ? '' : ' oculto'}" id="f-p12-wrap">
         <input type="checkbox" id="f-p12" ${val.polea12 ? 'checked' : ''}>
-        Polea con proporción 1/2 (la carga real es la mitad del peso seleccionado)
+        Polea con proporción 1/2
       </label>
       <div class="fila2">
         <div>
@@ -1118,8 +1118,8 @@ function bindEjercicios(v) {
   // La casilla "Polea 1/2" solo tiene sentido con equipamiento Polea.
   const equipSel = document.getElementById('f-equip');
   if (equipSel) equipSel.onchange = () => {
-    document.getElementById('f-p12-wrap').style.display =
-      equipSel.value.toLowerCase() === 'polea' ? '' : 'none';
+    document.getElementById('f-p12-wrap').classList.toggle('oculto',
+      equipSel.value.toLowerCase() !== 'polea');
   };
 
   const cancelar = document.getElementById('ej-cancelar');
