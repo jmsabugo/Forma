@@ -605,6 +605,14 @@ function pasoPolea(actual, dir) {
 }
 function esPolea(e) { return !!e && String(e.equipamiento).toLowerCase() === 'polea'; }
 
+// Paso de los botones +/− de peso según el ejercicio: con barra el peso va
+// equilibrado (un disco a cada lado), así que el salto mínimo es el doble
+// del incremento base (2×1,25 = 2,5 kg); el resto usa el incremento tal cual.
+function pasoPeso(e) {
+  const inc = incrementoPeso();
+  return (e && String(e.equipamiento).toLowerCase() === 'barra') ? red2(inc * 2) : inc;
+}
+
 function hoyISO() { return new Date().toISOString().slice(0, 10); }
 
 // Series ya registradas hoy para un ejercicio, ordenadas por nº de serie.
@@ -726,7 +734,6 @@ function idsHechosHoy() {
 }
 
 function renderHoy(v) {
-  const stepP = incrementoPeso();
   const stepR = incrementoReps();
   const rutinas = state.data.rutinas || [];
 
@@ -743,7 +750,7 @@ function renderHoy(v) {
   const hechos = hechosIds.map(id => state.data.ejercicios.find(e => e.id === id)).filter(Boolean);
   if (hechos.length) {
     html += `<div class="hechos-hoy"><div class="hechos-tit">Hechos hoy</div>`
-      + hechos.map(e => tarjetaHecha(e, stepP, stepR)).join('') + `</div>`;
+      + hechos.map(e => tarjetaHecha(e, pasoPeso(e), stepR)).join('') + `</div>`;
   }
 
   // Selector de rutina
@@ -766,7 +773,7 @@ function renderHoy(v) {
   const hechosSet = new Set(hechosIds);
   const pendientes = ejerciciosDeHoy().filter(e => !hechosSet.has(e.id));
   html += pendientes.length
-    ? pendientes.map(e => tarjetaEntrada(e, stepP, stepR)).join('')
+    ? pendientes.map(e => tarjetaEntrada(e, pasoPeso(e), stepR)).join('')
     : (hechos.length ? '<p class="nota">¡Rutina completada! Puedes añadir otro ejercicio abajo.</p>'
                      : '<p class="nota">Esta rutina no tiene ejercicios activos. Edítala en la pestaña Rutinas.</p>');
 
@@ -814,7 +821,7 @@ function tarjetaHecha(e, stepP, stepR) {
       <span class="nombre">✓ ${esc(e.nombre)}</span>
       <button class="btn-mini-add" data-expandir="${e.id}">${expandido ? 'Cerrar' : '+ Añadir serie'}</button>
     </div>
-    ${expandido ? metaDescanso(e) : ''}
+    ${expandido ? metaDescanso(e) + metaNota(e) : ''}
     ${cuerpo}
   </div>`;
 }
@@ -841,6 +848,11 @@ function metaDescanso(e) {
   return e.descanso ? `<div class="entrada-meta">⏱ Descanso ${fmtPeso(e.descanso)} min</div>` : '';
 }
 
+// Nota del ejercicio (del catálogo), visible al entrenar sin ir a la pestaña Ejercicios.
+function metaNota(e) {
+  return e.notas ? `<p class="ej-notas">${esc(e.notas)}</p>` : '';
+}
+
 function tarjetaEntrada(e, stepP, stepR) {
   const unilateral = String(e.lateralidad).toLowerCase() === 'unilateral';
   if (unilateral) {
@@ -851,6 +863,7 @@ function tarjetaEntrada(e, stepP, stepR) {
           <span class="chip chip-coral">Unilateral · por lado</span>
         </div>
         ${metaDescanso(e)}
+        ${metaNota(e)}
         <div class="lado-bloque">${bloqueEntrada(e, 'Izq', stepP, stepR)}</div>
         <div class="lado-bloque">${bloqueEntrada(e, 'Der', stepP, stepR)}</div>
       </div>`;
@@ -865,6 +878,7 @@ function tarjetaEntrada(e, stepP, stepR) {
         </span>
       </div>
       ${metaDescanso(e)}
+      ${metaNota(e)}
       ${bloqueEntrada(e, '', stepP, stepR)}
     </div>`;
 }
