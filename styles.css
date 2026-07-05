@@ -542,6 +542,20 @@ h3 { font-size: 0.95rem; margin-bottom: 10px; }
 .chart-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .chart-scroll .chart-inner { position: relative; height: 220px; }
 
+/* Eje Y fijo: clon recortado al eje que no se desplaza (las cantidades no se pierden). */
+.chart-fy { position: relative; }
+.chart-yaxis {
+  position: absolute; left: 0; top: 0;
+  width: 44px; height: 220px;   /* recorte: se ajusta por JS al ancho real del eje */
+  overflow: hidden;
+  background: var(--blanco);
+  z-index: 2;
+  pointer-events: none;
+  box-shadow: 5px 0 6px -4px rgba(32, 42, 68, 0.15);
+}
+/* El clon se dibuja con holgura (para que el eje no se comprima) y el recuadro lo recorta. */
+.chart-yaxis-inner { position: relative; width: 72px; height: 220px; }
+
 /* Combo buscable de ejercicio (Progreso): lista propia, funciona en iOS */
 .combo { position: relative; }
 .combo .combo-input { margin-bottom: 0; }

@@ -1798,7 +1798,10 @@ function renderProgreso(v) {
     <div class="kpis kpis-3">${kpiCards}</div>
     <div class="card">
       <h3>Tendencia · ${kpiLbl} (${escalaLbl})</h3>
-      <div class="chart-scroll"><div class="chart-inner" style="width: max(100%, ${tend.n * 36}px)"><canvas id="ch-tend"></canvas></div></div>
+      <div class="chart-fy">
+        <div class="chart-yaxis"><div class="chart-yaxis-inner"><canvas id="ch-tend-y"></canvas></div></div>
+        <div class="chart-scroll"><div class="chart-inner" style="width: max(100%, ${tend.n * 36}px)"><canvas id="ch-tend"></canvas></div></div>
+      </div>
       <p class="nota">Barra clara = proyección del periodo en curso · línea = tu media.</p>
     </div>
     <div class="card racha">
@@ -1816,7 +1819,10 @@ function renderProgreso(v) {
       </div>
       <div class="ej-stats"><b>${st.sesiones}</b> sesiones · récord: <b>${recordTxt}</b></div>
       <div class="selector-rutina metrica">${metChips}</div>
-      <div class="chart-scroll"><div class="chart-inner" style="width: max(100%, ${evN * 36}px)"><canvas id="ch-ev"></canvas></div></div>
+      <div class="chart-fy">
+        <div class="chart-yaxis"><div class="chart-yaxis-inner"><canvas id="ch-ev-y"></canvas></div></div>
+        <div class="chart-scroll"><div class="chart-inner" style="width: max(100%, ${evN * 36}px)"><canvas id="ch-ev"></canvas></div></div>
+      </div>
       <h4 class="ev-hist-tit">Todas las sesiones</h4>
       <div class="ev-hist">${historialEjercicio(state.prog.ejercicio).map(s => `
         <div class="ev-hist-dia">
@@ -1872,8 +1878,7 @@ function dibujarGraficas() {
 
   // Tendencia: barras (real + proyección apilada) + línea de media.
   const t = serieTendencia(kpi, periodo);
-  const ct = document.getElementById('ch-tend');
-  if (ct) state.prog._charts.push(new Chart(ct, {
+  graficaEjeFijo('ch-tend', 'ch-tend-y', () => ({
     data: {
       labels: t.labels,
       datasets: [
@@ -1886,30 +1891,57 @@ function dibujarGraficas() {
   }));
 
   // Evolución por ejercicio: frecuencia = barras por periodo; el resto, línea por sesión.
-  const ce = document.getElementById('ch-ev');
-  if (ce) {
-    if (metrica === 'frecuencia') {
-      const fr = frecuenciaEjercicio(state.prog.ejercicio, periodo);
-      state.prog._charts.push(new Chart(ce, {
-        type: 'bar',
-        data: { labels: fr.labels, datasets: [{ data: fr.valores, backgroundColor: PAL.coral, borderRadius: 4 }] },
-        options: opcionesGrafica(true, false),
-      }));
-    } else {
-      const ev = serieEvolucion(state.prog.ejercicio, metrica, periodo);
-      state.prog._charts.push(new Chart(ce, {
-        type: 'line',
-        data: {
-          labels: ev.labels,
-          datasets: [{ data: ev.valores, borderColor: PAL.coral, backgroundColor: PAL.coral, tension: 0.25, pointRadius: 3, fill: false, spanGaps: true }],
-        },
-        options: opcionesGrafica(false, false),
-      }));
-    }
+  if (metrica === 'frecuencia') {
+    const fr = frecuenciaEjercicio(state.prog.ejercicio, periodo);
+    graficaEjeFijo('ch-ev', 'ch-ev-y', () => ({
+      type: 'bar',
+      data: { labels: fr.labels, datasets: [{ data: fr.valores, backgroundColor: PAL.coral, borderRadius: 4 }] },
+      options: opcionesGrafica(true, false),
+    }));
+  } else {
+    const ev = serieEvolucion(state.prog.ejercicio, metrica, periodo);
+    graficaEjeFijo('ch-ev', 'ch-ev-y', () => ({
+      type: 'line',
+      data: {
+        labels: ev.labels,
+        datasets: [{ data: ev.valores, borderColor: PAL.coral, backgroundColor: PAL.coral, tension: 0.25, pointRadius: 3, fill: false, spanGaps: true }],
+      },
+      options: opcionesGrafica(false, false),
+    }));
   }
 
   // Ambas gráficas arrancan mostrando lo más reciente (a la derecha).
   document.querySelectorAll('.chart-scroll').forEach(sc => { sc.scrollLeft = sc.scrollWidth; });
+}
+
+// Dibuja la gráfica desplazable (canvas real) y, superpuesto a la izquierda, un
+// clon recortado a su eje Y para que las cantidades no se pierdan al desplazar.
+// cfgFactory() devuelve una config nueva en cada llamada (Chart.js muta la config).
+function graficaEjeFijo(idReal, idEje, cfgFactory) {
+  const cReal = document.getElementById(idReal);
+  if (!cReal) return;
+  state.prog._charts.push(new Chart(cReal, cfgFactory()));
+
+  const cEje = document.getElementById(idEje);
+  if (!cEje) return;
+  const cfg = cfgFactory();
+  cfg.options.animation = false;
+  // Datos invisibles: del clon solo queremos su eje Y (idéntico al real).
+  (cfg.data.datasets || []).forEach(d => {
+    d.backgroundColor = 'transparent'; d.borderColor = 'transparent';
+    d.pointRadius = 0; d.borderWidth = 0;
+  });
+  const sc = cfg.options.scales;
+  sc.x = Object.assign({}, sc.x, { grid: { display: false }, border: { display: false } });
+  sc.x.ticks = Object.assign({}, sc.x.ticks, { color: 'transparent' }); // reserva el mismo alto que el real
+  sc.y = Object.assign({}, sc.y, { grid: { display: false } });
+  const chEje = new Chart(cEje, cfg);
+  state.prog._charts.push(chEje);
+  // Ajusta el ancho del recuadro fijo al ancho real del eje Y ya renderizado.
+  requestAnimationFrame(() => {
+    const box = cEje.closest('.chart-yaxis');
+    if (box && chEje.scales && chEje.scales.y) box.style.width = (Math.ceil(chEje.scales.y.width) + 2) + 'px';
+  });
 }
 
 // ===== Editor de rutinas =====
