@@ -21,7 +21,9 @@ let state = {
   entrada: {},      // valores en curso de la entrada rápida: { [id]: {peso, reps} }
   rutinaHoy: null,  // rutina elegida para hoy (nombre, o '__libre__', o null)
   extras: [],       // ejercicios sueltos añadidos hoy fuera de la rutina
-  hoyExpandido: null, // id del ejercicio "hecho hoy" con los controles desplegados
+  hoyExpandido: null, // (sin uso desde la ficha enfocada; se conserva por si acaso)
+  fichaAbierta: null, // id del ejercicio abierto en la ficha enfocada (pantalla completa)
+  fichaLado: {},      // lado activo en la ficha de cada unilateral: {id: 'Izq'|'Der'}
   flashPR: null,    // clave de serie a animar al lograr un récord (+3 reps a ese peso)
   undoStack: [],    // instantáneas de datos para "deshacer" (solo en memoria)
   ejBuscar: '',     // texto del buscador del catálogo (pestaña Ejercicios)
@@ -369,6 +371,40 @@ async function subirExcel() {
   const meta = await r.json();
   localStorage.setItem(LS.rev, meta.rev);
   marcarPendiente(false);
+}
+
+// Copia de seguridad del Excel: lo copia DENTRO de Dropbox (files/copy_v2) a la
+// carpeta "Back up _ Forma_Datos" del proyecto, con nombre fechado. Si hay
+// cambios sin subir, se sincronizan primero para que la copia incluya lo último.
+const CARPETA_BACKUP = 'Back up _ Forma_Datos';
+
+async function copiaSeguridad() {
+  if (!state.settings.refreshToken) { alert('Conecta primero con Dropbox en Ajustes.'); return; }
+  const btn = document.getElementById('btn-backup');
+  if (btn) { btn.disabled = true; btn.textContent = 'Creando copia…'; }
+  try {
+    if (localStorage.getItem(LS.pending)) await subirExcel(); // la copia debe incluir lo último
+    const t = await token();
+    const origen = state.settings.path;
+    const carpeta = origen.slice(0, origen.lastIndexOf('/'));
+    const d = new Date();
+    const p2 = (n) => String(n).padStart(2, '0');
+    const sello = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}${p2(d.getMinutes())}`;
+    const destino = `${carpeta}/${CARPETA_BACKUP}/Forma_Datos backup ${sello}.xlsx`;
+    const r = await fetch('https://api.dropboxapi.com/2/files/copy_v2', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from_path: origen, to_path: destino, autorename: true }),
+    });
+    if (!r.ok) throw new Error('Error al crear la copia: ' + await r.text());
+    const j = await r.json();
+    alert('Copia de seguridad creada:\n' + (j.metadata && j.metadata.name ? j.metadata.name : destino));
+  } catch (e) {
+    alert(e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🗄️ Copia de seguridad'; }
+    pintarBadge();
+  }
 }
 
 async function sincronizar(silencioso) {
@@ -766,7 +802,7 @@ function renderHoy(v) {
     html += hechos.length
       ? '<p class="nota">Elige una rutina para seguir, o añade más series arriba.</p>'
       : '<p class="nota">Elige tu entrenamiento de hoy para empezar a registrar.</p>';
-    v.innerHTML = html;
+    v.innerHTML = html + fichaOverlay(stepR);
     bindHoy(v);
     return;
   }
@@ -775,7 +811,7 @@ function renderHoy(v) {
   const hechosSet = new Set(hechosIds);
   const pendientes = ejerciciosDeHoy().filter(e => !hechosSet.has(e.id));
   html += pendientes.length
-    ? pendientes.map(e => tarjetaEntrada(e, pasoPeso(e), stepR)).join('')
+    ? pendientes.map(e => tarjetaEntrada(e)).join('')
     : (hechos.length ? '<p class="nota">¡Rutina completada! Puedes añadir otro ejercicio abajo.</p>'
                      : '<p class="nota">Esta rutina no tiene ejercicios activos. Edítala en la pestaña Rutinas.</p>');
 
@@ -790,42 +826,87 @@ function renderHoy(v) {
     </select>`;
   }
 
-  v.innerHTML = html;
+  v.innerHTML = html + fichaOverlay(stepR);
   bindHoy(v);
 }
 
-// Tarjeta compacta de un ejercicio ya trabajado hoy: resumen de series + "Añadir
-// serie" que despliega los controles de entrada (reutiliza bloqueEntrada).
+// HTML de la ficha enfocada si hay un ejercicio abierto ('' si no).
+function fichaOverlay(stepR) {
+  if (!state.fichaAbierta) return '';
+  const e = ejPorId(state.fichaAbierta);
+  if (!e) { state.fichaAbierta = null; return ''; }
+  return fichaHtml(e, stepR);
+}
+
+// Tarjeta compacta de un ejercicio ya trabajado hoy: resumen de series;
+// "+ Añadir serie" abre la ficha enfocada (pantalla completa).
 function tarjetaHecha(e, stepP, stepR) {
   const unilateral = String(e.lateralidad).toLowerCase() === 'unilateral';
-  const expandido = state.hoyExpandido === e.id;
+  // Resumen + referencia del mejor set al peso usado hoy (por lado).
+  const bloque = (lado, etiqueta) => {
+    const ss = seriesDeHoy(e.id, lado);
+    const pills = ss.map(s => `<span class="serie-pill${clasePR(s)}">S${s.serie}: ${fmtPeso(s.peso)}kg × ${s.reps}</span>`).join('') || '—';
+    const pesoHoy = ss.length ? ss[ss.length - 1].peso : 0;
+    return `<div class="hh-resumen">${etiqueta ? `<span class="hh-lado">${etiqueta}</span> ` : ''}${pills}</div>`
+      + refMejorHtml(e.id, lado, pesoHoy);
+  };
+  const cuerpo = unilateral ? bloque('Izq', 'izq') + bloque('Der', 'der') : bloque('', '');
 
-  let cuerpo;
-  if (expandido) {
-    cuerpo = unilateral
-      ? `<div class="lado-bloque">${bloqueEntrada(e, 'Izq', stepP, stepR)}</div>
-         <div class="lado-bloque">${bloqueEntrada(e, 'Der', stepP, stepR)}</div>`
-      : bloqueEntrada(e, '', stepP, stepR);
-  } else {
-    // Resumen + referencia del mejor set al peso usado hoy (por lado).
-    const bloque = (lado, etiqueta) => {
-      const ss = seriesDeHoy(e.id, lado);
-      const pills = ss.map(s => `<span class="serie-pill${clasePR(s)}">S${s.serie}: ${fmtPeso(s.peso)}kg × ${s.reps}</span>`).join('') || '—';
-      const pesoHoy = ss.length ? ss[ss.length - 1].peso : 0;
-      return `<div class="hh-resumen">${etiqueta ? `<span class="hh-lado">${etiqueta}</span> ` : ''}${pills}</div>`
-        + refMejorHtml(e.id, lado, pesoHoy);
-    };
-    cuerpo = unilateral ? bloque('Izq', 'izq') + bloque('Der', 'der') : bloque('', '');
-  }
-
-  return `<div class="card entrada hecha"${expandido ? ' data-activa="1"' : ''}>
+  return `<div class="card entrada hecha" data-ficha="${e.id}">
     <div class="titulo">
       <span class="nombre">✓ ${esc(e.nombre)}</span>
-      <button class="btn-mini-add" data-expandir="${e.id}">${expandido ? 'Cerrar' : '+ Añadir serie'}</button>
+      <button class="btn-mini-add" data-ficha="${e.id}">+ Añadir serie</button>
     </div>
-    ${expandido ? metaDescanso(e) + metaNota(e) : ''}
     ${cuerpo}
   </div>`;
+}
+
+// ===== Ficha enfocada (pantalla completa) =====
+// Se abre al guardar una serie (o con "+ Añadir serie"): el ejercicio en curso
+// ocupa toda la pantalla, sin scroll. En unilaterales, pestañas Izq/Der con un
+// solo juego de controles (el lado NO cambia solo al guardar).
+function abrirFicha(id) {
+  if (state.fichaAbierta !== id) {
+    if (!state.fichaAbierta) history.pushState({ ficha: id }, '');  // "atrás" cierra
+    state.fichaAbierta = id;
+  }
+  render();
+}
+
+function cerrarFicha(desdeAtras) {
+  if (!state.fichaAbierta) return;
+  state.fichaAbierta = null;
+  if (!desdeAtras && history.state && history.state.ficha) history.back();
+  render();
+}
+
+window.addEventListener('popstate', () => { if (state.fichaAbierta) cerrarFicha(true); });
+
+function fichaHtml(e, stepR) {
+  const stepP = pasoPeso(e);
+  const unilateral = String(e.lateralidad).toLowerCase() === 'unilateral';
+  let cuerpo;
+  if (unilateral) {
+    const lado = state.fichaLado[e.id] || 'Izq';
+    const tab = (l, txt) => {
+      const n = seriesDeHoy(e.id, l).length;
+      return `<button class="chip-sel lado-tab ${lado === l ? 'sel' : ''}" data-ficha-lado="${e.id}|${l}">
+        ${txt}${n ? ` (${n})` : ''}</button>`;
+    };
+    cuerpo = `<div class="selector-rutina lado-tabs">${tab('Izq', 'Izquierda')}${tab('Der', 'Derecha')}</div>`
+      + bloqueEntrada(e, lado, stepP, stepR);
+  } else {
+    cuerpo = bloqueEntrada(e, '', stepP, stepR);
+  }
+  return `
+    <div class="ficha-sheet">
+      <div class="ficha-cab">
+        <span class="nombre">${esc(e.nombre)}</span>
+        <button class="ficha-cerrar" data-ficha-cerrar="1" title="Cerrar">✕</button>
+      </div>
+      ${metaDescanso(e)}${metaNota(e)}
+      ${cuerpo}
+    </div>`;
 }
 
 function bindHoy(v) {
@@ -839,8 +920,15 @@ function bindHoy(v) {
   });
   v.querySelectorAll('[data-guardar]').forEach(btn =>
     btn.onclick = () => guardarSerie(btn.dataset.guardar, btn.dataset.guardarLado || ''));
-  v.querySelectorAll('[data-expandir]').forEach(btn =>
-    btn.onclick = () => { state.hoyExpandido = (state.hoyExpandido === btn.dataset.expandir) ? null : btn.dataset.expandir; render(); });
+  v.querySelectorAll('[data-ficha]').forEach(btn =>
+    btn.onclick = () => abrirFicha(btn.dataset.ficha));
+  v.querySelectorAll('[data-ficha-cerrar]').forEach(btn =>
+    btn.onclick = () => cerrarFicha(false));
+  v.querySelectorAll('[data-ficha-lado]').forEach(btn => btn.onclick = () => {
+    const [id, lado] = btn.dataset.fichaLado.split('|');
+    state.fichaLado[id] = lado;
+    render();
+  });
   const add = document.getElementById('add-suelto');
   if (add) add.onchange = () => anadirSuelto(add.value);
 }
@@ -855,33 +943,25 @@ function metaNota(e) {
   return e.notas ? `<p class="ej-notas">${esc(e.notas)}</p>` : '';
 }
 
-function tarjetaEntrada(e, stepP, stepR) {
+// Tarjeta plegada de un ejercicio pendiente: información básica; tocarla abre
+// la ficha enfocada, donde se introducen las series.
+function tarjetaEntrada(e) {
   const unilateral = String(e.lateralidad).toLowerCase() === 'unilateral';
-  if (unilateral) {
-    return `
-      <div class="card entrada">
-        <div class="titulo">
-          <span class="nombre">${esc(e.nombre)}</span>
-          <span class="chip chip-coral">Unilateral · por lado</span>
-        </div>
-        ${metaDescanso(e)}
-        ${metaNota(e)}
-        <div class="lado-bloque">${bloqueEntrada(e, 'Izq', stepP, stepR)}</div>
-        <div class="lado-bloque">${bloqueEntrada(e, 'Der', stepP, stepR)}</div>
-      </div>`;
-  }
   const u = ultimoPeso(e.id, '');
   return `
-    <div class="card entrada">
+    <div class="card entrada plegada" data-ficha="${e.id}">
       <div class="titulo">
         <span class="nombre">${esc(e.nombre)}</span>
         <span class="ultimo-peso">${u ? fmtPeso(u.peso) + ' kg' : '—'}
           <small>${u ? 'último (' + fmtFecha(u.fecha) + ')' : 'sin registros'}</small>
         </span>
       </div>
-      ${metaDescanso(e)}
-      ${metaNota(e)}
-      ${bloqueEntrada(e, '', stepP, stepR)}
+      <div class="chips">
+        ${e.seriesObj || e.repsObj ? `<span class="chip">objetivo ${e.seriesObj}×${e.repsObj}</span>` : ''}
+        ${e.descanso ? `<span class="chip">descanso ${fmtPeso(e.descanso)}′</span>` : ''}
+        ${unilateral ? '<span class="chip chip-coral">Unilateral · por lado</span>' : ''}
+      </div>
+      <span class="plegada-chev">›</span>
     </div>`;
 }
 
@@ -957,7 +1037,8 @@ function guardarSerie(id, lado) {
     lado: lado || '', reps: val.reps, peso: red2(val.peso),
     rutina: rutinaParaGuardar(), notas: '',
   });
-  state.hoyExpandido = id; // queda en "Hechos hoy" con los controles abiertos
+  timerDesdeSerie(e, id, serie, lado || '');   // arranca el descanso
+  if (lado) state.fichaLado[id] = lado;        // la ficha se queda en el lado usado
   // ¿Este set acaba de batir el récord a ese peso (+3 al total)? → animación.
   const nueva = state.data.registro[state.data.registro.length - 1];
   const { total, mejorPrev } = statsSet(nueva);
@@ -966,14 +1047,8 @@ function guardarSerie(id, lado) {
   state.flashPR = cruzaAhora ? setKey(nueva) : null;
   saveData();
   marcarPendiente(true);
-  render();
+  abrirFicha(id);   // al guardar, el ejercicio pasa a la ficha enfocada (y render)
   if (state.flashPR) setTimeout(() => { state.flashPR = null; }, 1400);
-  // Sitúa la pantalla en la tarjeta activa (que acaba de subir a "Hechos hoy").
-  const activa = document.querySelector('[data-activa]');
-  if (activa) {
-    const y = activa.getBoundingClientRect().top + window.scrollY - 64;
-    window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
-  }
 }
 
 function renderEjercicios(v) {
@@ -2088,8 +2163,12 @@ function renderAjustes(v) {
       <input type="text" id="ruta" value="${s.path}" autocomplete="off" autocapitalize="off">
       ${conectado
         ? '<button class="btn" id="btn-sync">Sincronizar ahora</button>'
+          + '<button class="btn btn-sec" id="btn-backup">🗄️ Copia de seguridad</button>'
           + '<button class="btn btn-coral" id="btn-desconectar">Desconectar</button>'
         : '<button class="btn" id="btn-conectar">Conectar con Dropbox</button>'}
+      ${conectado ? `<p class="nota">La copia de seguridad guarda una copia fechada del Excel
+      en la carpeta <b>${CARPETA_BACKUP}</b> del proyecto (en Dropbox), sincronizando antes
+      si hay cambios pendientes.</p>` : ''}
       <p class="nota">La app de Dropbox debe ser tuya (gratuita), con permisos
       <b>files.content.read</b> y <b>files.content.write</b>, y esta URL registrada como
       Redirect URI: <b>${redirectUri()}</b>. La App Key no es secreta; aquí no se guarda
@@ -2124,6 +2203,7 @@ function renderAjustes(v) {
   const on = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
   on('btn-conectar', conectarDropbox);
   on('btn-sync', () => { guardarAjustesForm(); sincronizar(); });
+  on('btn-backup', copiaSeguridad);
   on('btn-desconectar', () => {
     if (!confirm('¿Desconectar Dropbox? Los datos locales se conservan.')) return;
     state.settings.refreshToken = ''; state.accessToken = null;
@@ -2184,6 +2264,128 @@ function pintarBadge() {
   else if (state.settings.refreshToken) { b.className = 'badge badge-on'; b.title = 'Sincronizado con Dropbox'; }
   else { b.className = 'badge badge-off'; b.title = 'Sin conexión con Dropbox'; }
 }
+
+// ===== Temporizador de descanso (cabecera) =====
+// Cuenta atrás que arranca al guardar una serie en Hoy, con la duración del
+// "Descanso (min)" del ejercicio. Estado solo en memoria (no toca el Excel).
+let timerFin = 0;         // timestamp (ms) en que termina la cuenta atrás
+let timerDur = 120;       // última duración usada (seg), fallback si no hay descanso
+let timerUltimo = '';     // "id|serie" que arrancó el timer (para no reiniciar con el 2º lado)
+let timerInterval = null;
+let timerAlarma = false;  // true = llegó a cero y está parpadeando
+let audioCtx = null;      // WebAudio; se crea/reanuda en el tap de guardar (gesto, iOS)
+
+function timerFmt(seg) {
+  seg = Math.max(0, Math.round(seg));
+  return `${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, '0')}`;
+}
+
+function timerPintar() {
+  const chip = document.getElementById('timer-chip');
+  if (!chip) return;
+  if (timerAlarma) { chip.textContent = '0:00'; chip.className = 'timer-chip timer-alarma'; return; }
+  if (timerFin > Date.now()) {
+    chip.textContent = timerFmt((timerFin - Date.now()) / 1000);
+    chip.className = 'timer-chip timer-on';
+  } else {
+    chip.textContent = `⏱ ${timerFmt(timerDur)}`;
+    chip.className = 'timer-chip';
+  }
+}
+
+function timerTick() {
+  if (timerFin && Date.now() >= timerFin) {   // llegó a cero
+    timerFin = 0;
+    timerAlarma = true;
+    timerBeep();
+  }
+  timerPintar();
+  if (!timerFin && !timerAlarma && timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+}
+
+function timerArrancar(seg) {
+  if (!(seg > 0)) return;
+  timerDur = seg;
+  timerFin = Date.now() + seg * 1000;
+  timerAlarma = false;
+  if (!timerInterval) timerInterval = setInterval(timerTick, 250);
+  timerPintar();
+}
+
+function timerParar() {
+  timerFin = 0;
+  timerAlarma = false;
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  timerPintar();
+}
+
+// Dos pitidos cortos con WebAudio (sin archivos de audio).
+function timerBeep() {
+  try {
+    if (!audioCtx) return;
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    [0, 0.35].forEach(t0 => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.frequency.value = 880;
+      const t = audioCtx.currentTime + t0;
+      gain.gain.setValueAtTime(0.001, t);
+      gain.gain.exponentialRampToValueAtTime(0.4, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+      osc.start(t); osc.stop(t + 0.3);
+    });
+  } catch (e) { console.warn('Beep no disponible:', e.message); }
+}
+
+// Llamado desde guardarSerie: arranca el descanso del ejercicio guardado.
+// En unilaterales, el segundo lado de la MISMA serie no reinicia la cuenta.
+function timerDesdeSerie(e, id, serie, lado) {
+  try { // preparar el audio dentro del gesto del usuario (requisito iOS)
+    if (!audioCtx && window.AudioContext) audioCtx = new AudioContext();
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (err) { /* sin audio */ }
+  const clave = `${id}|${serie}`;
+  if (lado && timerUltimo === clave) return;   // 2º lado de la misma serie
+  timerUltimo = clave;
+  const seg = e && e.descanso > 0 ? Math.round(e.descanso * 60) : timerDur;
+  timerArrancar(seg);
+}
+
+// Convierte lo escrito a segundos: "1:45" → 105; "90" → 90 (seg); "1,5" → 90 (min).
+function timerParse(txt) {
+  txt = String(txt).trim().replace(',', '.');
+  if (!txt) return 0;
+  const m = txt.match(/^(\d+):([0-5]?\d)$/);
+  if (m) return Number(m[1]) * 60 + Number(m[2]);
+  const n = Number(txt);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return n < 10 ? Math.round(n * 60) : Math.round(n);  // <10 se entiende como minutos
+}
+
+function setupTimer() {
+  const chip = document.getElementById('timer-chip');
+  const panel = document.getElementById('timer-panel');
+  if (!chip || !panel) return;
+  chip.onclick = () => {
+    if (timerAlarma) { timerParar(); return; }   // tocar apaga la alarma
+    panel.hidden = !panel.hidden;
+    document.getElementById('timer-stop').hidden = !(timerFin > Date.now());
+  };
+  panel.querySelectorAll('[data-seg]').forEach(b => b.onclick = () => {
+    try { if (!audioCtx && window.AudioContext) audioCtx = new AudioContext(); } catch (e) { /* sin audio */ }
+    timerArrancar(Number(b.dataset.seg));
+    panel.hidden = true;
+  });
+  const custom = document.getElementById('timer-custom');
+  custom.onchange = () => {
+    const seg = timerParse(custom.value);
+    if (seg > 0) { timerArrancar(seg); custom.value = ''; panel.hidden = true; }
+  };
+  document.getElementById('timer-stop').onclick = () => { timerParar(); panel.hidden = true; };
+  timerPintar();
+}
+setupTimer();
 
 // ===== Arranque =====
 document.querySelectorAll('nav button').forEach(b =>
