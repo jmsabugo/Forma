@@ -17,9 +17,24 @@
 <body>
   <header>
     <h1>Forma</h1>
+    <button id="timer-chip" class="timer-chip" title="Temporizador de descanso">⏱</button>
     <button id="btn-undo" class="btn-undo" hidden title="Deshacer el último cambio">Deshacer</button>
     <span id="sync-badge" class="badge badge-off" title="Estado de sincronización">●</span>
   </header>
+
+  <div id="timer-panel" class="timer-panel" hidden>
+    <div class="timer-presets">
+      <button class="chip-sel" data-seg="30">0:30</button>
+      <button class="chip-sel" data-seg="60">1:00</button>
+      <button class="chip-sel" data-seg="90">1:30</button>
+      <button class="chip-sel" data-seg="120">2:00</button>
+      <button class="chip-sel" data-seg="150">2:30</button>
+      <button class="chip-sel" data-seg="180">3:00</button>
+    </div>
+    <input type="text" id="timer-custom" class="buscador timer-custom" inputmode="decimal"
+           placeholder="Otro: 1:45, 90 (seg) o 1,5 (min)" autocomplete="off">
+    <button class="btn btn-coral" id="timer-stop" hidden>Detener</button>
+  </div>
 
   <div id="ptr" class="ptr"></div>
   <main id="view"></main>
