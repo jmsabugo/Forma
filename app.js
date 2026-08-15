@@ -701,6 +701,7 @@ function render() {
   const v = document.getElementById('view');
   document.querySelectorAll('nav button').forEach(b =>
     b.classList.toggle('active', b.dataset.tab === state.tab));
+  timerVisible();   // el temporizador solo tiene sentido en Hoy
   if (!state.data && state.tab !== 'ajustes') {
     v.innerHTML = `
       <div class="card dato-grande">
@@ -2278,6 +2279,17 @@ let audioCtx = null;      // WebAudio; se crea/reanuda en el tap de guardar (ges
 function timerFmt(seg) {
   seg = Math.max(0, Math.round(seg));
   return `${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, '0')}`;
+}
+
+// El chip (y su panel) solo se muestran en la pestaña Hoy; la cuenta atrás
+// sigue corriendo por dentro aunque estés en otra pestaña.
+function timerVisible() {
+  const chip = document.getElementById('timer-chip');
+  const panel = document.getElementById('timer-panel');
+  if (!chip) return;
+  const enHoy = state.tab === 'hoy';
+  chip.hidden = !enHoy;
+  if (!enHoy && panel) panel.hidden = true;
 }
 
 function timerPintar() {
