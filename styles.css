@@ -38,8 +38,54 @@ header {
 }
 header h1 { font-size: 1.4rem; letter-spacing: 0.04em; }
 
-.btn-undo {
+/* ===== Temporizador de descanso (cabecera) ===== */
+.timer-chip {
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--blanco);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  padding: 6px 12px;
   margin-left: auto;
+  margin-right: 8px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  white-space: nowrap;
+}
+.timer-chip.timer-on { background: var(--neblina); color: var(--azul); border-color: var(--neblina); }
+.timer-chip.timer-alarma {
+  background: var(--coral-fuerte);
+  border-color: var(--coral-fuerte);
+  color: var(--blanco);
+  animation: timer-parpadeo 0.8s ease infinite;
+}
+@keyframes timer-parpadeo {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(1.08); }
+}
+
+.timer-panel {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 56px);
+  left: 12px; right: 12px;
+  max-width: 480px;
+  margin: 0 auto;
+  z-index: 40;
+  background: var(--blanco);
+  border: 1px solid var(--neblina);
+  border-radius: var(--radio);
+  box-shadow: 0 8px 24px rgba(32, 42, 68, 0.22);
+  padding: 14px;
+}
+.timer-presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.timer-panel .timer-custom { margin: 10px 0 0; }
+.timer-panel .btn { margin-top: 10px; }
+
+.btn-undo {
   margin-right: 12px;
   background: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.45);
@@ -311,6 +357,56 @@ select.campo {
 }
 .hh-resumen { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
 .hh-lado { font-size: 0.72rem; color: var(--lavanda); font-weight: 700; text-transform: uppercase; }
+
+/* Tarjeta plegada de ejercicio pendiente (tocarla abre la ficha) */
+.card.entrada.plegada {
+  position: relative;
+  cursor: pointer;
+  padding-right: 34px;
+  -webkit-tap-highlight-color: transparent;
+}
+.card.entrada.plegada:active { background: var(--neblina); }
+.plegada-chev {
+  position: absolute;
+  right: 14px; top: 50%;
+  transform: translateY(-50%);
+  color: var(--lavanda);
+  font-size: 1.4rem;
+}
+.card.entrada.hecha { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+
+/* ===== Ficha enfocada (ejercicio en curso a pantalla completa) ===== */
+.ficha-sheet {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 58px);   /* deja ver cabecera y temporizador */
+  left: 0; right: 0; bottom: 0;
+  z-index: 20;                                   /* por encima de lista y nav */
+  background: var(--fondo);
+  padding: 14px 16px calc(env(safe-area-inset-bottom) + 16px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.ficha-cab {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.ficha-cab .nombre { font-weight: 800; font-size: 1.25rem; }
+.ficha-cerrar {
+  flex: 0 0 auto;
+  width: 40px; height: 40px;
+  font: inherit; font-size: 1.1rem; font-weight: 700;
+  border: 1px solid var(--neblina);
+  border-radius: 999px;
+  background: var(--blanco);
+  color: var(--azul);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.lado-tabs { margin: 10px 0 2px; }
+.lado-tabs .lado-tab { flex: 1; text-align: center; }
 
 /* ===== Selector de rutina (pestaña Hoy) ===== */
 .selector-rutina {
