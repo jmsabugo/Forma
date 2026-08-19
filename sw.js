@@ -1,6 +1,6 @@
 // Service worker: cachea el armazón de la app para funcionar sin cobertura.
 // Las llamadas a Dropbox nunca se cachean.
-const CACHE = 'forma-v35';
+const CACHE = 'forma-v36';
 // Archivos propios: deben cachearse para que la instalación termine.
 const LOCAL = [
   './',
