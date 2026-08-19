@@ -36,7 +36,7 @@ header {
   top: 0;
   z-index: 10;
 }
-header h1 { font-size: 1.4rem; letter-spacing: 0.04em; }
+header h1 { font-size: 1.4rem; letter-spacing: 0.04em; margin-right: auto; }
 
 /* ===== Temporizador de descanso (cabecera) ===== */
 .timer-chip {
@@ -49,7 +49,6 @@ header h1 { font-size: 1.4rem; letter-spacing: 0.04em; }
   border: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: 999px;
   padding: 6px 12px;
-  margin-left: auto;
   margin-right: 8px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
