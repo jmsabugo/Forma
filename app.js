@@ -2293,6 +2293,9 @@ function timerVisible() {
 }
 
 function timerPintar() {
+  // Toda la barra azul parpadea al acabar: se ve aunque el chip esté oculto.
+  const head = document.querySelector('header');
+  if (head) head.classList.toggle('header-alarma', timerAlarma);
   const chip = document.getElementById('timer-chip');
   if (!chip) return;
   if (timerAlarma) { chip.textContent = '0:00'; chip.className = 'timer-chip timer-alarma'; return; }
@@ -2331,32 +2334,71 @@ function timerParar() {
   timerPintar();
 }
 
-// Dos pitidos cortos con WebAudio (sin archivos de audio).
-function timerBeep() {
+// Sonido de aviso. En iOS el audio se bloquea salvo que se "desbloquee" dentro
+// de un gesto del usuario, y el contexto se SUSPENDE al apagar pantalla o cambiar
+// de app: por eso se desbloquea en cualquier toque y se reanuda al volver.
+// Aviso conocido: con el interruptor de silencio del iPhone puesto, iOS silencia
+// también el audio web (WebAudio y <audio>); ahí solo queda el aviso visual.
+const BEEP_WAV = 'data:audio/wav;base64,UklGRqQbAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YYAbAACAgIGCgX57ent/hIiIhH12c3Z+iI+PiHxxbHB7ipWWjXxsZWl4jJudkn1pXmJ0jaClmH9mV1twjaWsn4JkUVNqjKm0poZiS0tkiq27rotiRUNdh66/s49kRkJag6u+tZNoSEFXgKi+t5dsSkFUfKW9uZtwTEBReKK8u550T0BPdJ67vKJ4UUBMcJu5vaV8VEFKbJe3vqiAV0FIaJO1vquDWkJGZI+zv66HXUNEYYuwv7CLYURDXYeuv7OPZEZCWoOrvrWTaEhBV4CovreXbEpBVHylvbmbcExAUXiivLuedE9AT3Seu7yieFFATHCbub2lfFRBSmyXt76of1dBSGiTtb6rg1pCRmSPs7+uh11DRGGLsL+wi2FEQ12Hrr+zj2RGQlqDq761k2hIQVd/qL63l2xKQVR8pb25m3BMQFF4ory7nnRPQE90nru8onhRQExwm7m9pXxUQUpsl7e+qH9XQUhok7W+q4NaQkZkj7O/roddQ0Rhi7C/sIthRENdh66/s49kRkJag6u+tZNoSEFXgKi+t5dsSkFUfKW9uZtwTEBReKK8u550T0BPdJ67vKJ4UUBMcJu5vaV8VEFKbJe3vqh/V0FIaJO1vquDWkJGZI+zv66HXUNEYYuwv7CLYURDXYeuv7OPZEZCWoOrvrWTaEhBV4CovreXbEpBVHylvbmbcExAUXiivLuedE9AT3Seu7yieFFATHCbub2lfFRBSmyXt76of1dBSGiTtb6rg1pCRmSPs7+uh11DRGGLsL+wi2FEQ12Hrr+zj2RGQlqDq761k2hIQVd/qL63l2xKQVR8pb25m3BMQFF4ory7nnRPQE90nru8onhRQExwm7m9pXxUQUpsl7e+qIBXQUhok7W+q4NaQkZkj7O/roddQ0Rhi7C/sIthRENdh66/s49kRkJag6u+tZNoSEFXgKi+t5dsSkFUfKW9uZtwTEBReKK8u550T0BPdJ67vKJ4UUBMcJu5vaV8VEFKbJe3vqh/V0FIaJO1vquDWkJGZI+zv66HXUNEYYuwv7CLYURDXYeuv7OPZEZCWoOrvrWTaEhBV4CovreXbEpBVHylvbmbcExAUXiivLuedE9AT3Seu7yieFFATHCbub2lfFRBSmyXt76of1dBSGiTtb6rg1pCRmSPs7+uh11DRGGLsL+wi2FEQ12Hrr+zj2RGQlqDq761k2hIQVeAqL63l2xKQVR8pb25m3BMQFF4ory7nnRPQE90nru8onhRQExwm7m9pXxUQUpsl7e+qH9XQUhok7W+q4NaQkZkj7O/roddQ0Rhi7C/sIthRENdh66/s49kRkJag6u+tZNoSEFXgKi+t5dsSkFUfKW9uZtwTEBReKK8u550T0BPdJ67vKJ4UUBMcJu5vaV8VEFKbJe3vqh/V0FIaJO1vquDWkJGZI+zv66HXUNEYYuwv7CLYURDXYeuv7OPZEZCWoOrvrWTaEhBV4CovreXbEpBVHylvbmbcExAUXiivLuedE9AT3Seu7yieFFATHCbub2lfFRBSmyXt76of1dBSGiTtb6rg1pCRmSPs7+uh11DRGGLsL+wi2FEQ12Hrr+zj2RGQlqDq761k2hIQVd/qL63l2xKQVR8pb25m3BMQFF4ory7nnRPQE90nru8onhRQExwm7m9pXxUQUpsl7e+qH9XQUhok7W+q4NaQkZkj7O/roddQ0Rhi7C/sIthRENeh629sY9mSUVdg6i5sJFqTkhcf6O1r5NvU0tcfJ6xrZVzV05ceZmtq5Z3XFJdd5WoqZd6YVZedZGkppd9ZVlfdI2go5eAaV1hc4qcoJaCbWFjcoeYnZWDcGVmcoSUmZOEdGlpc4KQlpGFd21sdIGNko+FeXFvdYCJjoyFe3Rzd3+Gi4qEfXd2eX6Eh4eDfnt6e3+ChIOBf319fn+AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIGCgX57ent/hIiIhH12c3Z+iI+PiHxxbHB7ipWWjXxsZWl4jJudkn1pXmJ0jaClmH9mV1twjaWsn4JkUVNqjKm0poZiS0tkiq27rotiRUNdh66/s49kRkJag6u+tZNoSEFXgKi+t5dsSkFUfKW9uZtwTEBReKK8u550T0BPdJ67vKJ4UUBMcJu5vaV8VEFKbJe3vqiAV0FIaJO1vquDWkJGZI+zv66HXUNEYYuwv7CLYURDXYeuv7OPZEZCWoOrvrWTaEhBV4CovreXbEpBVHylvbmbcExAUXiivLuedE9AT3Seu7yieFFATHCbub2lfFRBSmyXt76of1dBSGiTtb6rg1pCRmSPs7+uh11DRGGLsL+wi2FEQ12Hrr+zj2RGQlqDq761k2hIQVd/qL63l2xKQVR8pb25m3BMQFF4ory7nnRPQE90nru8onhRQExwm7m9pXxUQUpsl7e+qH9XQUhok7W+q4NaQkZkj7O/roddQ0Rhi7C/sIthRENdh66/s49kRkJag6u+tZNoSEFXgKi+t5dsSkFUfKW9uZtwTEBReKK8u550T0BPdJ67vKJ4UUBMcJu5vaV8VEFKbJe3vqh/V0FIaJO1vquDWkJGZI+zv66HXUNEYYuwv7CLYURDXYeuv7OPZEZCWoOrvrWTaEhBV4CovreXbEpBVHylvbmbcExAUXiivLuedE9AT3Seu7yieFFATHCbub2lfFRBSmyXt76of1dBSGiTtb6rg1pCRmSPs7+uh11DRGGLsL+wi2FEQ12Hrr+zj2RGQlqDq761k2hIQVd/qL63l2xKQVR8pb25m3BMQFF4ory7nnRPQE90nru8onhRQExwm7m9pXxUQUpsl7e+qIBXQUhok7W+q4NaQkZkj7O/roddQ0Rhi7C/sIthRENdh66/s49kRkJag6u+tZNoSEFXgKi+t5dsSkFUfKW9uZtwTEBReKK8u550T0BPdJ67vKJ4UUBMcJu5vaV8VEFKbJe3vqh/V0FIaJO1vquDWkJGZI+zv66HXUNEYYuwv7CLYURDXYeuv7OPZEZCWoOrvrWTaEhBV4CovreXbEpBVHylvbmbcExAUXiivLuedE9AT3Seu7yieFFATHCbub2lfFRBSmyXt76of1dBSGiTtb6rg1pCRmSPs7+uh11DRGGLsL+wi2FEQ12Hrr+zj2RGQlqDq761k2hIQVeAqL63l2xKQVR8pb25m3BMQFF4ory7nnRPQE90nru8onhRQExwm7m9pXxUQUpsl7e+qH9XQUhok7W+q4NaQkZkj7O/roddQ0Rhi7C/sIthRENdh66/s49kRkJag6u+tZNoSEFXgKi+t5dsSkFUfKW9uZtwTEBReKK8u550T0BPdJ67vKJ4UUBMcJu5vaV8VEFKbJe3vqh/V0FIaJO1vquDWkJGZI+zv66HXUNEYYuwv7CLYURDXYeuv7OPZEZCWoOrvrWTaEhBV4CovreXbEpBVHylvbmbcExAUXiivLuedE9AT3Seu7yieFFATHCbub2lfFRBSmyXt76of1dBSGiTtb6rg1pCRmSPs7+uh11DRGGLsL+wi2FEQ12Hrr+zj2RGQlqDq761k2hIQVd/qL63l2xKQVR8pb25m3BMQFF4ory7nnRPQE90nru8onhRQExwm7m9pXxUQUpsl7e+qH9XQUhok7W+q4NaQkZkj7O/roddQ0Rhi7C/sIthRENeh629sY9mSUVdg6i5sJFqTkhcf6O1r5NvU0tcfJ6xrZVzV05ceZmtq5Z3XFJdd5WoqZd6YVZedZGkppd9ZVlfdI2go5eAaV1hc4qcoJaCbWFjcoeYnZWDcGVmcoSUmZOEdGlpc4KQlpGFd21sdIGNko+FeXFvdYCJjoyFe3Rzd3+Gi4qEfXd2eX6Eh4eDfnt6e3+ChIOBf319fn+AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIGBf3x7fYGGh4N7dnZ9ho2LgXVvc4COk4x7bWl0iJeYiXNkZnqSn5iBaF1og52llXZcWG6PqKeNaFJYeJ6xpYBZSl2Hrbedb0tIaJm6t49dQU15qb+sfU9AWou1vZ5rRkVqnL22jFtBTnyrv6p6TkFcjre8m2hERmyfvbSKWUBQf62/qHdMQV6RuLuYZkNHb6G+s4dWQFKBr7+mdEpCYZO5upZjQ0lypL6xhFRAVISxvqNySUNjlrq5k2FCSnWmv6+BUkBXh7O+oW9HRGaZu7iQXkFMeKi/rX5QQFmKtb2fbEZFaZu8to1cQU57q7+re05BW422vJxpRUZrnr21i1lAUH6tv6l4TEFekLe8mWdER26hvrOIV0BSgK+/p3VLQmCSubuXZENIcaO+sYVVQFSDsL6kc0lCY5W6uZRhQkp0pb+wglNAVoayvqJwSENlmLu4kV9BS3eov65/UUBYibS9n21GRGibvLeOXEFNeqq/rHxPQFqMtr2dakVFa529tYxaQE99rL+qeU1BXY+3vJpoREdtoL20iVhAUX+uv6d2S0Ffkri7mGVDSHCivrKGVkBTgrC/pXRKQmKUurqVYkJJc6W+sINTQFWFsr6jcUhDZJe7uZJgQkt2p7+ugFFAV4izvqBuR0Rnmry3j11BTXmpv6x9T0Bai7W9nmtGRWqcvbaNW0FOfKu/qnpOQVyOt7ybaERGbJ+9tIpZQFB+rb+od0xBXpG4u5lmQ0dvob6zh1ZAUoGvv6Z1SkJhk7m6lmNDSXKkvrGEVEBUhLG+pHJJQ2OWurmTYUJKdaa/r4FSQFaHs76hb0dEZpm7uJBeQUx4qL+tflBAWYq0vZ9sRkVpm7y2jlxBTnuqv6t7TkFbjba8nGlFRmuevbWLWUBQfa2/qXhMQV2Qt7yZZ0RHbqC+s4hXQFKAr7+ndktCYJK5u5dkQ0hxo76yhVVAVIOwvqRzSUJilbq5lGJCSnSlv7CCU0BWhrK+onBIQ2WYu7iRX0FLd6i/rn9RQFiJtL2fbUZEaJq8t49dQU16qr+sfE9AWoy1vZ1qRUVqnb21jFpAT3ysv6p5TUFdj7e8mmhER22gvbSJWEBRf66/p3dLQV+RuLuYZUNIcKK+soZWQFOCsL+ldEpCYpS6upViQklzpL6wg1RAVYWyvqNxSENkl7u5kmBCS3anv66AUUBXiLO+oG5HRGeavLePXUFNeam/rH1QQFmLtb2ea0ZFapy9to1bQU57q7+qek5BXI62vJtpRUZsn720illAUH6tv6h4TEFekLi7mWZER2+hvrOHVkBSga+/pnVKQmGTubqWY0NJcqS+sYRUQFSEsb6kcklDY5a6uZNhQkp1pr+vgVJAVoezvqFvR0Rmmbu4kF5BTHiov61+UEBZirS9n2xGRWmbvLaOXEFOeqq/q3tOQVuNtr2cakVGa569tYtZQFB9rL+peU1BXY+3vJpnREduoL6ziFdAUYCuv6d2S0Jgkrm7l2RDSHGjvrKFVUBUg7C+pHNJQmKVurqUYkJKdKW/sIJTQFaGsr6icEhDZZi7uJFfQUt3p7+uf1FAWIm0vaBtR0Romry3j11BTXmqv6x8T0BajLW9nWpFRWqdvbWMWkBPfKy/qnpNQV2Pt7yaaERGbZ+9tIlYQFF/rr+od0tBX5G4u5hlQ0hwor6yhlZAU4Kwv6V0SkJilLm6lWJCSXOkvrCDVEBVhbK+o3FIQ2SXu7mSYEJLdqe/r4BSQFeIs76gbkdEZ5m8t5BdQUx4qb+tfVBAWYu1vZ5rRkVpnLy2jVtBTnurv6p7TkFcjra8m2lFRmyfvbSKWUBQfq2/qHhMQV6QuLuZZkRHb6G+s4dWQFKBr7+mdUpCYZO5upZjQ0lypL6xhFRAVISxvqRySUNjlrq5k2FCSnWmv6+BUkBWh7O+oW9HQ2aZu7iRXkFMd6i/rX5QQFmKtL2fbEZEaJu8t45cQU56qr+rfE5BW422vZxqRUZrnr21i1pAT32sv6l5TUFdj7e8mmdER26gvrOIV0BRgK6/p3ZLQmCSubuXZENIcaO+soVVQFODsL6lc0lCYpW6upRiQkp0pb+wglNAVoayvqJwSENlmLu4kl9BS3anv65/UUBYibS9oG1HRGiavLePXUFNeaq/rH1PQFqMtb2da0VFap29toxaQE98rL+qek1BXI63vJtoREZtn720iVhAUX+uv6h3S0Ffkbi7mGVDSHCivrKGVkBTgrC/pXRKQmGUubqVY0JJc6S+sINUQFWFsb6jcUhDZJe7uZJgQkt1p7+vgFJAV4izvqFuR0Rnmby3kF5BTHipv61+UEBZi7W9nmtGRWmcvLaNW0FOe6u/q3tOQVyNtrybaUVGbJ+9tYpZQFB+rb+oeExBXpC4u5lmREdvob6zh1dAUoGvv6Z1SkJhk7m6lmNDSXKjvrGEVEBUhLG+pHJJQ2OWurmTYUJKdKa/r4FSQFaHs76hb0dDZpi7uJFeQUx3qL+tf1BAWYq0vZ9sRkRom7y3jlxBTnqqv6t8TkFbjLa9nGpFRmuevbWLWkBPfay/qXlNQV2Pt7yaZ0RHbqC+s4hXQFGArr+ndktCYJK5u5dkQ0hxo76yhVVAU4OwvqVzSUJilbq6lGJCSnSlv7CCU0BWhrK+onBIQ2WYu7iSX0FLdqe/roBRQFiJtL6gbUdEZ5q8t49dQU15qb+sfU9AWou1vZ1rRUVqnb22jFpBT3ysv6p6TUFcjre8m2hERm2fvbSJWEBRf66/qHdMQV+RuLuYZUNIcKK9sYZXQlWCrbujdU5HZJKzs5NmSlF0n7Wpg1tMXYSnsZt0VVFqkayqjmlTWnibrKCAYFVkhaGolXVcWnCPpKGJbFtie5ejmH5mXmuFm5+PdmNjdY2cmIZvZGp+kpqRfmxncoWUlol4a2x5ipOQg3Rtcn+MkYp+c3B4g4yNhXp0dXyGioiBeXZ5gIaHhH56eX2BhISBfnx9f4GBgYB/fw==';
+let beepEl = null;   // <audio> de respaldo por si WebAudio está dormido
+
+function audioDesbloquear() {
   try {
-    if (!audioCtx) return;
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    [0, 0.35].forEach(t0 => {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.connect(gain); gain.connect(audioCtx.destination);
-      osc.frequency.value = 880;
-      const t = audioCtx.currentTime + t0;
-      gain.gain.setValueAtTime(0.001, t);
-      gain.gain.exponentialRampToValueAtTime(0.4, t + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
-      osc.start(t); osc.stop(t + 0.3);
-    });
-  } catch (e) { console.warn('Beep no disponible:', e.message); }
+    if (!audioCtx && (window.AudioContext || window.webkitAudioContext))
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    if (!beepEl) {
+      beepEl = new Audio(BEEP_WAV);
+      beepEl.preload = 'auto';
+      beepEl.volume = 1;
+      // Un play/pause silencioso dentro del gesto deja el elemento "autorizado".
+      const v = beepEl.volume; beepEl.volume = 0;
+      const p = beepEl.play();
+      if (p && p.then) p.then(() => { beepEl.pause(); beepEl.currentTime = 0; beepEl.volume = v; })
+                        .catch(() => { beepEl.volume = v; });
+      else { beepEl.pause(); beepEl.currentTime = 0; beepEl.volume = v; }
+    }
+  } catch (e) { /* sin audio disponible */ }
+}
+
+// Cualquier toque en la app deja el audio listo; al volver a primer plano se reanuda.
+document.addEventListener('pointerdown', audioDesbloquear, { passive: true });
+document.addEventListener('touchend', audioDesbloquear, { passive: true });
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+});
+
+function timerBeep() {
+  let sonoWebAudio = false;
+  try {
+    if (audioCtx) {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      if (audioCtx.state === 'running') {
+        [0, 0.3, 0.6].forEach((t0, i) => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.connect(gain); gain.connect(audioCtx.destination);
+          osc.frequency.value = i === 2 ? 1046 : 880;
+          const t = audioCtx.currentTime + t0;
+          gain.gain.setValueAtTime(0.001, t);
+          gain.gain.exponentialRampToValueAtTime(0.6, t + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.26);
+          osc.start(t); osc.stop(t + 0.3);
+        });
+        sonoWebAudio = true;
+      }
+    }
+  } catch (e) { console.warn('WebAudio no disponible:', e.message); }
+  if (!sonoWebAudio && beepEl) {   // respaldo: elemento <audio>
+    try { beepEl.currentTime = 0; const p = beepEl.play(); if (p && p.catch) p.catch(() => {}); }
+    catch (e) { /* silencio */ }
+  }
 }
 
 // Llamado desde guardarSerie: arranca el descanso del ejercicio guardado.
 // En unilaterales, el segundo lado de la MISMA serie no reinicia la cuenta.
 function timerDesdeSerie(e, id, serie, lado) {
-  try { // preparar el audio dentro del gesto del usuario (requisito iOS)
-    if (!audioCtx && window.AudioContext) audioCtx = new AudioContext();
-    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-  } catch (err) { /* sin audio */ }
+  audioDesbloquear();   // el audio debe prepararse dentro de un gesto (iOS)
   const clave = `${id}|${serie}`;
   if (lado && timerUltimo === clave) return;   // 2º lado de la misma serie
   timerUltimo = clave;
@@ -2385,7 +2427,7 @@ function setupTimer() {
     document.getElementById('timer-stop').hidden = !(timerFin > Date.now());
   };
   panel.querySelectorAll('[data-seg]').forEach(b => b.onclick = () => {
-    try { if (!audioCtx && window.AudioContext) audioCtx = new AudioContext(); } catch (e) { /* sin audio */ }
+    audioDesbloquear();
     timerArrancar(Number(b.dataset.seg));
     panel.hidden = true;
   });
@@ -2395,6 +2437,8 @@ function setupTimer() {
     if (seg > 0) { timerArrancar(seg); custom.value = ''; panel.hidden = true; }
   };
   document.getElementById('timer-stop').onclick = () => { timerParar(); panel.hidden = true; };
+  const head = document.querySelector('header');
+  if (head) head.addEventListener('click', () => { if (timerAlarma) timerParar(); });
   timerPintar();
 }
 setupTimer();
