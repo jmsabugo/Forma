@@ -876,9 +876,27 @@ function abrirFicha(id) {
 
 function cerrarFicha(desdeAtras) {
   if (!state.fichaAbierta) return;
+  const id = state.fichaAbierta;
   state.fichaAbierta = null;
+  timerAlCerrarFicha(id);
   if (!desdeAtras && history.state && history.state.ficha) history.back();
   render();
+}
+
+// Al cerrar la ficha, ¿tiene sentido seguir descansando? Si ya has hecho las
+// series objetivo del ejercicio, el descanso sobra y se detiene. Si te faltan
+// series (o el ejercicio no tiene objetivo), sigue corriendo: así una superserie
+// con otro ejercicio conserva la cuenta atrás. Nunca detiene un descanso que
+// arrancó OTRO ejercicio.
+function timerAlCerrarFicha(id) {
+  if (!(timerFin > Date.now())) return;                    // no hay cuenta en marcha
+  if (String(timerUltimo).split('|')[0] !== id) return;     // la arrancó otro ejercicio
+  const e = ejPorId(id);
+  if (!e || !(e.seriesObj > 0)) return;                    // sin objetivo, no decidimos
+  const hechas = new Set(state.data.registro
+    .filter(r => r.id === id && r.fecha === hoyISO())
+    .map(r => r.serie)).size;                              // izq+der cuentan como una
+  if (hechas >= e.seriesObj) timerParar();
 }
 
 window.addEventListener('popstate', () => { if (state.fichaAbierta) cerrarFicha(true); });
