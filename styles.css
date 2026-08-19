@@ -49,7 +49,10 @@ header h1 { font-size: 1.4rem; letter-spacing: 0.04em; margin-right: auto; }
   border: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: 999px;
   padding: 6px 12px;
-  margin-right: 8px;
+  position: absolute;                              /* centrado real en la franja */
+  left: 50%;
+  transform: translateX(-50%);
+  top: calc(env(safe-area-inset-top) + 14px);      /* misma línea que el resto */
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
@@ -58,20 +61,20 @@ header h1 { font-size: 1.4rem; letter-spacing: 0.04em; margin-right: auto; }
 .timer-chip[hidden] { display: none; }
 .timer-chip.timer-on { background: var(--neblina); color: var(--azul); border-color: var(--neblina); }
 .timer-chip.timer-alarma {
-  background: var(--coral-fuerte);
-  border-color: var(--coral-fuerte);
-  color: var(--blanco);
+  background: var(--blanco);
+  border-color: var(--blanco);
+  color: var(--coral);
   animation: timer-parpadeo 0.8s ease infinite;
 }
 /* Fin del descanso: parpadea TODA la barra azul (se ve aunque el chip no esté) */
 header.header-alarma { animation: header-alarma 0.7s steps(1, end) infinite; }
 @keyframes header-alarma {
-  0%, 49%   { background: var(--coral-fuerte); }
+  0%, 49%   { background: var(--coral); }
   50%, 100% { background: var(--azul); }
 }
 @keyframes timer-parpadeo {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.55; transform: scale(1.08); }
+  0%, 100% { opacity: 1; transform: translateX(-50%) scale(1); }
+  50% { opacity: 0.55; transform: translateX(-50%) scale(1.08); }
 }
 
 .timer-panel {
