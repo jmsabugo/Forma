@@ -2387,29 +2387,36 @@ document.addEventListener('visibilitychange', () => {
 });
 
 function timerBeep() {
+  const PAUSA = 1.5;   // la secuencia entera suena dos veces, con esta pausa
   let sonoWebAudio = false;
   try {
     if (audioCtx) {
       if (audioCtx.state === 'suspended') audioCtx.resume();
       if (audioCtx.state === 'running') {
-        [0, 0.3, 0.6].forEach((t0, i) => {
-          const osc = audioCtx.createOscillator();
-          const gain = audioCtx.createGain();
-          osc.connect(gain); gain.connect(audioCtx.destination);
-          osc.frequency.value = i === 2 ? 1046 : 880;
-          const t = audioCtx.currentTime + t0;
-          gain.gain.setValueAtTime(0.001, t);
-          gain.gain.exponentialRampToValueAtTime(0.6, t + 0.02);
-          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.26);
-          osc.start(t); osc.stop(t + 0.3);
+        [0, PAUSA].forEach(base => {           // dos repeticiones
+          [0, 0.3, 0.6].forEach((t0, i) => {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.frequency.value = i === 2 ? 1046 : 880;
+            const t = audioCtx.currentTime + base + t0;
+            gain.gain.setValueAtTime(0.001, t);
+            gain.gain.exponentialRampToValueAtTime(0.6, t + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.26);
+            osc.start(t); osc.stop(t + 0.3);
+          });
         });
         sonoWebAudio = true;
       }
     }
   } catch (e) { console.warn('WebAudio no disponible:', e.message); }
-  if (!sonoWebAudio && beepEl) {   // respaldo: elemento <audio>
-    try { beepEl.currentTime = 0; const p = beepEl.play(); if (p && p.catch) p.catch(() => {}); }
-    catch (e) { /* silencio */ }
+  if (!sonoWebAudio && beepEl) {   // respaldo: elemento <audio>, también dos veces
+    const sonar = () => {
+      try { beepEl.currentTime = 0; const p = beepEl.play(); if (p && p.catch) p.catch(() => {}); }
+      catch (e) { /* silencio */ }
+    };
+    sonar();
+    setTimeout(sonar, 1500);
   }
 }
 
