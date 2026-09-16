@@ -1057,7 +1057,15 @@ function guardarSerie(id, lado) {
     rutina: rutinaParaGuardar(), notas: '',
   });
   timerDesdeSerie(e, id, serie, lado || '');   // arranca el descanso
-  if (lado) state.fichaLado[id] = lado;        // la ficha se queda en el lado usado
+  if (lado) {
+    // Unilateral: al guardar un lado, la ficha salta sola al otro para completar
+    // la serie. Solo se queda en el mismo lado si el otro ya va por delante
+    // (estabas poniéndote al día con este lado).
+    const otro = lado === 'Izq' ? 'Der' : 'Izq';
+    const nEste = seriesDeHoy(id, lado).length;
+    const nOtro = seriesDeHoy(id, otro).length;
+    state.fichaLado[id] = nOtro <= nEste ? otro : lado;
+  }
   // ¿Este set acaba de batir el récord a ese peso (+3 al total)? → animación.
   const nueva = state.data.registro[state.data.registro.length - 1];
   const { total, mejorPrev } = statsSet(nueva);
